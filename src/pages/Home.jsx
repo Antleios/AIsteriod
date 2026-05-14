@@ -55,7 +55,7 @@ function Home() {
 
             {/* Button */}
             <button
-              onClick={() => navigate('/object-game')}
+              onClick={() => navigate('/patient')}
               className="flex w-full items-center gap-3 rounded-xl border border-gray-100 bg-white/80 px-4 py-3 text-left shadow-sm transition-all duration-300 hover:border-[#3B82F6]/30 hover:shadow-[0_0_20px_rgba(59,130,246,0.25)]"
             >
               <img
