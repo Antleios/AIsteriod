@@ -1,46 +1,79 @@
 # Autism Rehab Web
 
-## 项目介绍
 一个面向自闭症康复训练的 AI Web 平台。
 
-当前阶段：
-- 主页面
-- 三个小游戏页面
-
 ## 技术栈
-- React
-- Vite
-- TailwindCSS
-- React Rounter
 
-## UI风格
-- 卡通化
-- 柔和色彩
-- 儿童友好
-- 响应式设计
+- React 19 + Vite 8
+- TailwindCSS v4
+- React Router v7
 
-## 页面
-- Home
-- ObjectNamingGame
-- ColorLineGame
-- EmojiGame
+## UI 风格
+
+- 极简 + 科技感 + 医疗蓝白渐变
+- 卡通化、柔和色彩、儿童友好
+- 手绘绘本风（颜色连线游戏）
+- 响应式设计（支持平板/PC）
+
+## 页面路由
+
+| 路径 | 页面 | 说明 |
+|------|------|------|
+| `/` | Home | 医疗 AI 平台首页 |
+| `/object-game` | ObjectNamingGame | 物品命名游戏（语音交互） |
+| `/color-game` | ColorLineGame | 颜色连线游戏（拖拽配对） |
+| `/emoji-game` | EmojiGame | 表情匹配游戏（情绪识别） |
+
+## 游戏功能
+
+### 物品命名游戏
+- AI 语音提问 "请说出图片上的物品名称"
+- 浏览器语音识别 / 文字输入备选
+- 实时反馈正确/错误，自动加载下一题
+- 20 种日常物品题库
+
+### 颜色连线游戏
+- 拖拽彩色物品到同色目标上配对
+- 5 种颜色 × 2 个物品 = 10 个元素
+- 实时 SVG 连线反馈，配对成功脉冲动画
+- 配对手感：按住 → 拖拽 → 松手
+
+### 表情匹配游戏
+- 显示目标情绪词，4 个 emoji 选项
+- 点击选择匹配表情
+- 10 组情绪（开心/悲伤/愤怒/害怕等）
 
 ## 可复用组件
-- Navbar
-- ProgressBar
-- AIAvatar
-- RewardPopup
 
-## Agent开发规范
-每次生成代码：
-1. 使用 React Function Component
-2. 使用 TailwindCSS
-3. 保持组件化
-4. 响应式设计
-5. 风格统一
-6. 输出完整文件结构
-7. 输出完整代码
-8. 标明每个文件应该放在哪里
-9. 所有 import 路径正确
-10. 保持代码可直接运行
-11. 不要省略关键代码
+- `Navbar` — 顶部导航
+- `ProgressBar` — 今日训练进度条
+- `AIAvatar` — AI 卡通头像 + 语音气泡
+- `RewardPopup` — 星星粒子庆祝动画
+
+## 项目结构
+
+```
+src/
+├── components/     # 可复用组件
+├── pages/          # 页面
+├── data/           # Mock 数据
+├── api/            # 预留 API 接口
+├── assets/         # 图片资源
+├── App.jsx         # 路由配置
+├── index.css       # TailwindCSS 入口
+└── main.jsx        # 入口
+```
+
+## 开发
+
+```bash
+npm run dev      # 启动开发服务器
+npm run build    # 生产构建
+npm run preview  # 预览生产构建
+```
+
+## 备注
+
+- 当前阶段不实现登录，默认视为已登录
+- 语音数据与完成记录预留同步医生端接口
+- 游戏进度使用 localStorage 持久化
