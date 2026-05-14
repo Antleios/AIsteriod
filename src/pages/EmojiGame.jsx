@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ProgressBar from '../components/ProgressBar.jsx'
 import AIAvatar from '../components/AIAvatar.jsx'
@@ -21,17 +21,17 @@ function EmojiGame() {
   const [rounds, setRounds] = useState(() => shuffle(emotionSets))
   const [roundIndex, setRoundIndex] = useState(0)
   const [score, setScore] = useState(0)
-  const [todayCompleted, setTodayCompleted] = useState(() => {
-    const saved = localStorage.getItem('emoji_game_today')
-    return saved ? Number(saved) : 0
-  })
+  const [todayCompleted, setTodayCompleted] = useState(0)
   const [step, setStep] = useState('prompting') // prompting | waiting | correct | wrong
   const [selectedId, setSelectedId] = useState(null)
   const [feedbackText, setFeedbackText] = useState('')
   const [showReward, setShowReward] = useState(false)
 
   const current = rounds[roundIndex]
-  const shuffledOptions = current ? shuffle(current.options) : []
+  const shuffledOptions = useMemo(
+    () => (current ? shuffle(current.options) : []),
+    [roundIndex], // eslint-disable-line react-hooks/exhaustive-deps
+  )
 
   const speak = useCallback((text) => {
     if (!window.speechSynthesis) return
@@ -69,9 +69,7 @@ function EmojiGame() {
         speak(`答对了！${opt.emoji} 就是${current.target}！太棒了！`)
         setScore((s) => s + 1)
         setShowReward(true)
-        const newVal = todayCompleted + 1
-        setTodayCompleted(newVal)
-        localStorage.setItem('emoji_game_today', String(newVal))
+        setTodayCompleted((n) => n + 1)
       } else {
         setStep('wrong')
         setFeedbackText(
@@ -184,17 +182,6 @@ function EmojiGame() {
                   >
                     <span className="text-5xl transition-transform duration-300 group-hover:scale-110">
                       {opt.emoji}
-                    </span>
-                    <span
-                      className={`text-base font-medium ${
-                        isCorrectReveal
-                          ? 'text-green-600'
-                          : isWrongReveal
-                            ? 'text-red-500'
-                            : 'text-gray-600'
-                      }`}
-                    >
-                      {opt.name}
                     </span>
                     {isCorrectReveal && (
                       <span className="text-sm text-green-500">✅ 正确</span>

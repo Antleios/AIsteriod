@@ -21,10 +21,7 @@ function ObjectNamingGame() {
   const [session, setSession] = useState(() => shuffle(objects))
   const [currentIndex, setCurrentIndex] = useState(0)
   const [score, setScore] = useState(0)
-  const [todayCompleted, setTodayCompleted] = useState(() => {
-    const saved = localStorage.getItem('object_game_today')
-    return saved ? Number(saved) : 0
-  })
+  const [todayCompleted, setTodayCompleted] = useState(0)
   const [step, setStep] = useState('prompting')
   const [feedbackText, setFeedbackText] = useState('')
   const [showReward, setShowReward] = useState(false)
@@ -58,9 +55,7 @@ function ObjectNamingGame() {
         speak(`答对了！这就是${correct}！太棒了！`)
         setScore((s) => s + 1)
         setShowReward(true)
-        const newCompleted = todayCompleted + 1
-        setTodayCompleted(newCompleted)
-        localStorage.setItem('object_game_today', String(newCompleted))
+        setTodayCompleted((n) => n + 1)
       } else {
         setStep('feedback_incorrect')
         setFeedbackText(`唔，你说的好像是"${answer}"，再仔细看看？🤔`)
@@ -127,6 +122,7 @@ function ObjectNamingGame() {
   useEffect(() => {
     if (!current) return
     setStep('prompting')
+    setFeedbackText('')
     speak('请说出图片上的物品名称')
     setTranscript('')
     transcriptRef.current = ''
@@ -318,7 +314,7 @@ function ObjectNamingGame() {
                 </div>
               )}
 
-              {step === 'prompting' && (
+              {(step === 'prompting' || step === 'listening') && (
                 <p className="mt-6 text-sm text-gray-400">
                   💡 提示：{current.hint}
                 </p>

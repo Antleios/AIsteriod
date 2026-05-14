@@ -23,12 +23,19 @@ function ColorLineGame() {
   const [showReward, setShowReward] = useState(false)
   const [roundKey, setRoundKey] = useState(0)
 
+  /* ── ref for current matched IDs (always up-to-date inside closures) ── */
+  const matchedIdsRef = useRef(new Set())
+  useEffect(() => {
+    matchedIdsRef.current = new Set(matches.flatMap((m) => [m.id1, m.id2]))
+  }, [matches])
+
   /* ── drag state ── */
   const [dragging, setDragging] = useState(false)
   const [dragFromId, setDragFromId] = useState(null)
   const [dragPos, setDragPos] = useState({ x: 0, y: 0 })
   const [dropTargetId, setDropTargetId] = useState(null)
   const dragFromIdRef = useRef(null)
+  const dragStartPosRef = useRef({ x: 0, y: 0 }) // for detecting actual drag movement
 
   const speak = useCallback((t) => {
     if (!window.speechSynthesis) return
@@ -80,9 +87,17 @@ function ColorLineGame() {
 
       if (!targetId || targetId === fromId) return // cancel
 
+      // only count as a match attempt if the pointer actually moved (real drag)
+      const dx = e.clientX - dragStartPosRef.current.x
+      const dy = e.clientY - dragStartPosRef.current.y
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+
       const from = items.find((i) => i.id === Number(fromId))
       const target = items.find((i) => i.id === Number(targetId))
       if (!from || !target) return
+
+      // prevent re-matching already-paired items
+      if (matchedIdsRef.current.has(from.id) || matchedIdsRef.current.has(target.id)) return
 
       if (from.color === target.color) {
         // ✅ Correct
@@ -95,9 +110,7 @@ function ColorLineGame() {
         speak(`${from.label}配对成功！`)
         setScore((s) => s + 1)
         setShowReward(true)
-        const n = todayCompleted + 1
-        setTodayCompleted(n)
-        localStorage.setItem('color_game_today', String(n))
+        setTodayCompleted((n) => n + 1)
       } else {
         // ❌ Wrong
         setStep('wrong')
@@ -129,6 +142,7 @@ function ColorLineGame() {
     setDragging(true)
     setDragFromId(item.id)
     dragFromIdRef.current = item.id
+    dragStartPosRef.current = { x: e.clientX, y: e.clientY }
     setDragPos({ x: e.clientX - r.left, y: e.clientY - r.top })
     speak(`选中了${item.label}`)
   }
