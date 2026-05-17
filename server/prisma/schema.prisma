@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model ObjectNamingQuestion {
+  id         Int      @id @default(autoincrement())
+  prompt     String
+  answer     String
+  hint       String?
+  assetType  String   @default("emoji")
+  assetValue String
+  difficulty Int      @default(1)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model EmojiMatchQuestion {
+  id          Int      @id @default(autoincrement())
+  prompt      String
+  answer      String
+  assetType   String   @default("emoji")
+  difficulty  Int      @default(1)
+  optionsJson String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ColorLineConfig {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique @default("default")
+  title       String
+  dailyGoal   Int
+  description String?
+  totalPairs  Int      @default(5)
+  paletteJson String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

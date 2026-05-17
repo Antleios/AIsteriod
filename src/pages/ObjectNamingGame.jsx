@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import ProgressBar from '../components/ProgressBar.jsx'
 import AIAvatar from '../components/AIAvatar.jsx'
 import RewardPopup from '../components/RewardPopup.jsx'
+import { fetchObjectNamingQuestions } from '../api/games.js'
 import objects from '../data/objects.js'
 
 const DAILY_GOAL = 10
@@ -18,6 +19,7 @@ function shuffle(arr) {
 
 function ObjectNamingGame() {
   const navigate = useNavigate()
+  const [questionBank, setQuestionBank] = useState(objects)
   const [session, setSession] = useState(() => shuffle(objects))
   const [currentIndex, setCurrentIndex] = useState(0)
   const [score, setScore] = useState(0)
@@ -33,6 +35,26 @@ function ObjectNamingGame() {
 
   const current = session[currentIndex]
 
+  useEffect(() => {
+    let cancelled = false
+
+    fetchObjectNamingQuestions()
+      .then((questions) => {
+        if (cancelled || questions.length === 0) return
+        setQuestionBank(questions)
+        setSession(shuffle(questions))
+        setCurrentIndex(0)
+      })
+      .catch(() => {
+        setQuestionBank(objects)
+        setSession((currentSession) => (currentSession.length ? currentSession : shuffle(objects)))
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const speak = useCallback((text) => {
     if (!window.speechSynthesis) return
     window.speechSynthesis.cancel()
@@ -41,6 +63,16 @@ function ObjectNamingGame() {
     utter.rate = 0.9
     utter.pitch = 1.1
     window.speechSynthesis.speak(utter)
+  }, [])
+
+  const stopListening = useCallback(() => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop()
+      } catch { /* ignore */ }
+      recognitionRef.current = null
+    }
+    setListening(false)
   }, [])
 
   const checkAnswer = useCallback(
@@ -62,18 +94,8 @@ function ObjectNamingGame() {
         speak('再仔细看看图片，想一想这是什么？')
       }
     },
-    [current, todayCompleted, speak],
+    [current, speak, stopListening],
   )
-
-  const stopListening = useCallback(() => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop()
-      } catch { /* ignore */ }
-      recognitionRef.current = null
-    }
-    setListening(false)
-  }, [])
 
   const startListening = useCallback(() => {
     setTranscript('')
@@ -108,7 +130,7 @@ function ObjectNamingGame() {
     }
     recognition.onend = () => {
       setListening(false)
-      const final = transcriptRef.current || manualInput
+      const final = transcriptRef.current
       if (final.trim()) {
         checkAnswer(final.trim())
       }
@@ -116,8 +138,7 @@ function ObjectNamingGame() {
 
     recognitionRef.current = recognition
     recognition.start()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [checkAnswer])
 
   useEffect(() => {
     if (!current) return
@@ -129,17 +150,16 @@ function ObjectNamingGame() {
     setManualInput('')
     const timer = setTimeout(() => startListening(), 1500)
     return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIndex])
+  }, [current, speak, startListening])
 
   const goNext = useCallback(() => {
     if (currentIndex < session.length - 1) {
       setCurrentIndex((i) => i + 1)
     } else {
       setCurrentIndex(0)
-      setSession(shuffle(objects))
+      setSession(shuffle(questionBank))
     }
-  }, [currentIndex, session.length])
+  }, [currentIndex, questionBank, session.length])
 
   useEffect(() => {
     if (step === 'feedback_correct') {

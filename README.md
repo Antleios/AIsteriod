@@ -72,6 +72,25 @@ npm run build    # 生产构建
 npm run preview  # 预览生产构建
 ```
 
+## 后端与题库数据库
+
+v1 后端位于 `server/`，使用 Express + Prisma + SQLite 提供题库 API。数据库按“每个游戏一张表”组织：
+
+- `ObjectNamingQuestion`：物品命名题库
+- `EmojiMatchQuestion`：表情匹配题库，选项存储在 `optionsJson`
+- `ColorLineConfig`：颜色连线配置和颜色池
+
+```bash
+cd server
+npm install
+cp .env.example .env
+npx prisma migrate deploy
+npm run db:seed
+npm run dev
+```
+
+前端开发服务器已代理 `/api` 到 `http://localhost:3001`。后端不可用时，三个游戏会继续回退到 `src/data/*.js` 本地题库。
+
 ## 备注
 
 - 当前阶段不实现登录，默认视为已登录
