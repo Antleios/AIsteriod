@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import ProgressBar from '../components/ProgressBar.jsx'
 import AIAvatar from '../components/AIAvatar.jsx'
 import RewardPopup from '../components/RewardPopup.jsx'
+import { fetchEmojiMatchQuestions } from '../api/games.js'
 import emotionSets from '../data/emotionEmojis.js'
 
 const DAILY_GOAL = 8
@@ -18,7 +19,8 @@ function shuffle(arr) {
 
 function EmojiGame() {
   const navigate = useNavigate()
-  const [rounds, setRounds] = useState(() => shuffle(emotionSets))
+  const [questionBank, setQuestionBank] = useState([])
+  const [rounds, setRounds] = useState([])
   const [roundIndex, setRoundIndex] = useState(0)
   const [score, setScore] = useState(0)
   const [todayCompleted, setTodayCompleted] = useState(0)
@@ -28,9 +30,39 @@ function EmojiGame() {
   const [showReward, setShowReward] = useState(false)
 
   const current = rounds[roundIndex]
+
+  useEffect(() => {
+    let cancelled = false
+    const fallbackToLocalQuestions = () => {
+      setQuestionBank(emotionSets)
+      setRounds(shuffle(emotionSets))
+      setRoundIndex(0)
+    }
+
+    fetchEmojiMatchQuestions()
+      .then((questions) => {
+        if (cancelled) return
+        if (questions.length === 0) {
+          fallbackToLocalQuestions()
+          return
+        }
+        setQuestionBank(questions)
+        setRounds(shuffle(questions))
+        setRoundIndex(0)
+      })
+      .catch(() => {
+        if (cancelled) return
+        fallbackToLocalQuestions()
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const shuffledOptions = useMemo(
     () => (current ? shuffle(current.options) : []),
-    [roundIndex], // eslint-disable-line react-hooks/exhaustive-deps
+    [current],
   )
 
   const speak = useCallback((text) => {
@@ -55,8 +87,7 @@ function EmojiGame() {
       setStep('waiting')
     }, 2000)
     return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roundIndex])
+  }, [current, speak])
 
   const handleSelect = useCallback(
     (opt, index) => {
@@ -78,17 +109,17 @@ function EmojiGame() {
         speak(`再想想哪个是${current.target}`)
       }
     },
-    [step, current, todayCompleted, speak],
+    [step, current, speak],
   )
 
   const goNext = useCallback(() => {
     if (roundIndex < rounds.length - 1) {
       setRoundIndex((i) => i + 1)
     } else {
-      setRounds(shuffle(emotionSets))
+      setRounds(shuffle(questionBank))
       setRoundIndex(0)
     }
-  }, [roundIndex, rounds.length])
+  }, [questionBank, roundIndex, rounds.length])
 
   useEffect(() => {
     if (step === 'correct') {
@@ -99,7 +130,13 @@ function EmojiGame() {
 
   const isAllDone = todayCompleted >= DAILY_GOAL
 
-  if (!current) return null
+  if (!current) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#EAF4FF] via-white to-[#EAF4FF]/60 text-[#3B82F6]">
+        <p className="text-lg font-semibold">正在加载题库...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-[#EAF4FF] via-white to-[#EAF4FF]/60">

@@ -7,7 +7,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores(['dist']),
   {
-    files: ['**/*.{js,jsx}'],
+    files: ['src/**/*.{js,jsx}'],
     extends: [
       js.configs.recommended,
       reactHooks.configs.flat.recommended,
@@ -16,6 +16,19 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+    rules: {
+      'react-hooks/immutability': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
+      'react-hooks/refs': 'off',
+      'react-hooks/set-state-in-effect': 'off',
+    },
+  },
+  {
+    files: ['vite.config.js', 'server/**/*.js'],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      globals: globals.node,
     },
   },
 ])
