@@ -130,9 +130,9 @@ function Home() {
         >
           <defs>
             <linearGradient id="waveGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.08" />
-              <stop offset="50%" stopColor="#5EA2FF" stopOpacity="0.12" />
-              <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.05" />
+              <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.18" />
+              <stop offset="50%" stopColor="#5EA2FF" stopOpacity="0.26" />
+              <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.14" />
             </linearGradient>
           </defs>
           <path

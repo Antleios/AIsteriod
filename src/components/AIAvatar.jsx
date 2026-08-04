@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import aiLogo from '../assets/logo.jpg'
 
 function AIAvatar({ message, speaking }) {
   const [dotCount, setDotCount] = useState(0)
@@ -15,11 +16,11 @@ function AIAvatar({ message, speaking }) {
     <div className="flex items-end gap-3">
       {/* AI Avatar */}
       <div
-        className={`flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white text-xl text-white shadow-lg transition-all duration-300 ${
+        className={`flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white shadow-lg transition-all duration-300 ${
           speaking ? 'scale-110 shadow-[#3B82F6]/40' : ''
-        } bg-gradient-to-br from-[#5EA2FF] to-[#3B82F6]`}
+        }`}
       >
-        AI
+        <img src={aiLogo} alt="AI" className="h-full w-full object-cover" />
       </div>
 
       {/* Speech Bubble */}

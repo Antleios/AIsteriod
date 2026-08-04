@@ -32,15 +32,15 @@ function Patient() {
       {/* Top Bar */}
       <div className="flex items-center gap-4 px-6 py-5">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/patient')}
           className="flex items-center gap-1 text-sm text-gray-400 transition-colors hover:text-[#3B82F6]"
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
-          返回首页
+          返回
         </button>
-        <h1 className="flex-1 text-center text-lg font-bold text-[#3B82F6]">患者端</h1>
+        <h1 className="flex-1 text-center text-lg font-bold text-[#3B82F6]">训练游戏</h1>
         <div className="w-[88px]" />
       </div>
 
