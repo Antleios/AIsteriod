@@ -7,6 +7,12 @@ import objects from '../data/objects.js'
 
 const DAILY_GOAL = 10
 
+// 去掉识别文本里的标点和空白，比如「苹果。」归一成「苹果」再判题
+const cleanAnswer = (text) =>
+  text
+    .replace(/[\s，。！？、,.!?；;：:…～“”‘’"'()（）]/g, '')
+    .trim()
+
 function shuffle(arr) {
   const a = [...arr]
   for (let i = a.length - 1; i > 0; i--) {
@@ -30,40 +36,24 @@ function ObjectNamingGame() {
   const [manualInput, setManualInput] = useState('')
   const recognitionRef = useRef(null)
   const transcriptRef = useRef('')
+  const checkAnswerRef = useRef(null)
+  const manualInputRef = useRef('')
 
   const current = session[currentIndex]
 
-  const speak = useCallback((text) => {
+  const speak = useCallback((text, onEnd) => {
     if (!window.speechSynthesis) return
     window.speechSynthesis.cancel()
     const utter = new SpeechSynthesisUtterance(text)
     utter.lang = 'zh-CN'
     utter.rate = 0.9
     utter.pitch = 1.1
+    if (onEnd) {
+      utter.onend = onEnd
+      utter.onerror = onEnd
+    }
     window.speechSynthesis.speak(utter)
   }, [])
-
-  const checkAnswer = useCallback(
-    (answer) => {
-      stopListening()
-      const correct = current.name
-      const isCorrect = answer.includes(correct) || correct.includes(answer)
-
-      if (isCorrect) {
-        setStep('feedback_correct')
-        setFeedbackText(`答对了！这就是${correct}！太棒了！🎉`)
-        speak(`答对了！这就是${correct}！太棒了！`)
-        setScore((s) => s + 1)
-        setShowReward(true)
-        setTodayCompleted((n) => n + 1)
-      } else {
-        setStep('feedback_incorrect')
-        setFeedbackText(`唔，你说的好像是"${answer}"，再仔细看看？🤔`)
-        speak('再仔细看看图片，想一想这是什么？')
-      }
-    },
-    [current, todayCompleted, speak],
-  )
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {
@@ -74,6 +64,37 @@ function ObjectNamingGame() {
     }
     setListening(false)
   }, [])
+
+  const checkAnswer = useCallback(
+    (answer) => {
+      stopListening()
+      const cleaned = cleanAnswer(answer)
+      if (!cleaned) return // 识别到的全是标点，忽略，不判题
+      const correct = current.name
+      const isCorrect = cleaned.includes(correct) || correct.includes(cleaned)
+
+      if (isCorrect) {
+        setStep('feedback_correct')
+        setFeedbackText(`答对了！这就是${correct}！太棒了！🎉`)
+        speak(`答对了！这就是${correct}！太棒了！`)
+        setScore((s) => s + 1)
+        setShowReward(true)
+        setTodayCompleted((n) => n + 1)
+      } else {
+        setStep('feedback_incorrect')
+        setFeedbackText(`唔，你说的好像是"${cleaned}"，再仔细看看？🤔`)
+        speak('再仔细看看图片，想一想这是什么？')
+      }
+    },
+    [current, speak, stopListening],
+  )
+
+  // 每次渲染后把最新的 checkAnswer/manualInput 同步进 ref，
+  // 防止 startListening 里 recognition.onend 捕获到旧闭包（旧题目的 current）
+  useEffect(() => {
+    checkAnswerRef.current = checkAnswer
+    manualInputRef.current = manualInput
+  })
 
   const startListening = useCallback(() => {
     setTranscript('')
@@ -108,29 +129,51 @@ function ObjectNamingGame() {
     }
     recognition.onend = () => {
       setListening(false)
-      const final = transcriptRef.current || manualInput
+      const final = transcriptRef.current || manualInputRef.current
       if (final.trim()) {
-        checkAnswer(final.trim())
+        checkAnswerRef.current(final.trim())
       }
     }
 
     recognitionRef.current = recognition
     recognition.start()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 提问：等 AI 语音播报结束后再开始听，避免 AI 的声音被识别成答案
+  const promptAndListen = useCallback(
+    (text) => {
+      setStep('prompting')
+      setFeedbackText('')
+      setTranscript('')
+      transcriptRef.current = ''
+      setManualInput('')
+      let started = false
+      const beginListening = () => {
+        if (started) return
+        started = true
+        // 停掉残留的 AI 语音，防止麦克风把播报拾音进去
+        if (window.speechSynthesis) window.speechSynthesis.cancel()
+        setTimeout(startListening, 300)
+      }
+      if (!window.speechSynthesis) {
+        beginListening()
+        return
+      }
+      speak(text, beginListening)
+      // 兜底：个别浏览器 onend 不触发时也能开始听
+      setTimeout(beginListening, 4000)
+    },
+    [speak, startListening],
+  )
 
   useEffect(() => {
     if (!current) return
-    setStep('prompting')
-    setFeedbackText('')
-    speak('请说出图片上的物品名称')
-    setTranscript('')
-    transcriptRef.current = ''
-    setManualInput('')
-    const timer = setTimeout(() => startListening(), 1500)
+    // 延迟一帧执行，避免在 effect 里同步 setState（react-hooks/set-state-in-effect）
+    const timer = setTimeout(() => {
+      promptAndListen('请说出图片上的物品名称')
+    }, 0)
     return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIndex])
+  }, [currentIndex, current, promptAndListen])
 
   const goNext = useCallback(() => {
     if (currentIndex < session.length - 1) {
@@ -149,13 +192,7 @@ function ObjectNamingGame() {
   }, [step, goNext])
 
   const handleRetry = () => {
-    setStep('prompting')
-    setFeedbackText('')
-    setTranscript('')
-    transcriptRef.current = ''
-    setManualInput('')
-    speak('请说出图片上的物品名称')
-    setTimeout(() => startListening(), 1500)
+    promptAndListen('请说出图片上的物品名称')
   }
 
   const handleManualSubmit = (e) => {
