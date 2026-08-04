@@ -8,7 +8,6 @@ const particles = Array.from({ length: 12 }, (_, i) => ({
 
 function RewardPopup({ show, onComplete }) {
   const [visible, setVisible] = useState(false)
-  const [score, setScore] = useState(0)
 
   useEffect(() => {
     if (!show) {
@@ -16,7 +15,6 @@ function RewardPopup({ show, onComplete }) {
       return
     }
     setVisible(true)
-    setScore((s) => s + 1)
 
     const timer = setTimeout(() => {
       setVisible(false)

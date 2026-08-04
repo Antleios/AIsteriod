@@ -6,9 +6,10 @@ const colorPalette = [
   { color: '#9B59B6', name: '紫色' },
 ]
 
-function generateColorRound() {
+function generateColorRound(palette = colorPalette) {
+  const activePalette = palette.length ? palette : colorPalette
   const items = []
-  const cols = 5
+  const cols = activePalette.length
   const rows = 2
   const areaW = 82
   const areaH = 70
@@ -28,8 +29,8 @@ function generateColorRound() {
       const y = (r / rows) * areaH + (areaH / rows) * 0.25 + Math.random() * (areaH / rows) * 0.3
       items.push({
         id: id++,
-        color: colorPalette[ci].color,
-        label: colorPalette[ci].name,
+        color: activePalette[ci].color,
+        label: activePalette[ci].name,
         x: Math.round(x * 10) / 10,
         y: Math.round(y * 10) / 10,
         shape: r === 0 ? 'circle' : 'square',

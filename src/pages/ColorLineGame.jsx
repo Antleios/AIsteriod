@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import ProgressBar from '../components/ProgressBar.jsx'
 import AIAvatar from '../components/AIAvatar.jsx'
 import RewardPopup from '../components/RewardPopup.jsx'
+import { fetchColorLineRoundConfig } from '../api/games.js'
 import { generateColorRound, colorPalette } from '../data/colorItems.js'
 
-const DAILY_GOAL = 5
-const TOTAL_PAIRS = 5
+const DEFAULT_DAILY_GOAL = 5
+const DEFAULT_TOTAL_PAIRS = 5
 
 function ColorLineGame() {
   const navigate = useNavigate()
@@ -16,6 +17,11 @@ function ColorLineGame() {
   /* ── state ── */
   const [score, setScore] = useState(0)
   const [todayCompleted, setTodayCompleted] = useState(0)
+  const [roundConfig, setRoundConfig] = useState({
+    dailyGoal: DEFAULT_DAILY_GOAL,
+    totalPairs: DEFAULT_TOTAL_PAIRS,
+    palette: colorPalette,
+  })
   const [items, setItems] = useState(() => generateColorRound())
   const [matches, setMatches] = useState([])
   const [step, setStep] = useState('prompting')
@@ -36,6 +42,35 @@ function ColorLineGame() {
   const [dropTargetId, setDropTargetId] = useState(null)
   const dragFromIdRef = useRef(null)
   const dragStartPosRef = useRef({ x: 0, y: 0 }) // for detecting actual drag movement
+
+  useEffect(() => {
+    let cancelled = false
+
+    fetchColorLineRoundConfig()
+      .then((config) => {
+        if (cancelled) return
+        const palette = config.palette.length ? config.palette : colorPalette
+        setRoundConfig({
+          dailyGoal: config.dailyGoal,
+          totalPairs: config.totalPairs,
+          palette,
+        })
+        setItems(generateColorRound(palette))
+        setMatches([])
+        setRoundKey((key) => key + 1)
+      })
+      .catch(() => {
+        setRoundConfig({
+          dailyGoal: DEFAULT_DAILY_GOAL,
+          totalPairs: DEFAULT_TOTAL_PAIRS,
+          palette: colorPalette,
+        })
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const speak = useCallback((t) => {
     if (!window.speechSynthesis) return
@@ -70,7 +105,7 @@ function ColorLineGame() {
       // hit-test using elementFromPoint
       const el = document.elementFromPoint(e.clientX, e.clientY)
       const itemEl = el?.closest('[data-item-id]')
-      const id = itemEl ? itemEl.getAttribute('data-item-id') : null
+      const id = itemEl ? Number(itemEl.getAttribute('data-item-id')) : null
       setDropTargetId((prev) => (prev !== id ? id : prev))
     }
 
@@ -83,17 +118,17 @@ function ColorLineGame() {
 
       const el = document.elementFromPoint(e.clientX, e.clientY)
       const itemEl = el?.closest('[data-item-id]')
-      const targetId = itemEl ? itemEl.getAttribute('data-item-id') : null
+      const targetId = itemEl ? Number(itemEl.getAttribute('data-item-id')) : null
 
-      if (!targetId || targetId === fromId) return // cancel
+      if (targetId === null || targetId === fromId) return // cancel
 
       // only count as a match attempt if the pointer actually moved (real drag)
       const dx = e.clientX - dragStartPosRef.current.x
       const dy = e.clientY - dragStartPosRef.current.y
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
 
-      const from = items.find((i) => i.id === Number(fromId))
-      const target = items.find((i) => i.id === Number(targetId))
+      const from = items.find((i) => i.id === fromId)
+      const target = items.find((i) => i.id === targetId)
       if (!from || !target) return
 
       // prevent re-matching already-paired items
@@ -149,27 +184,27 @@ function ColorLineGame() {
 
   /* ── auto-advance after correct ── */
   useEffect(() => {
-    if (step === 'correct' && matches.length < TOTAL_PAIRS) {
+    if (step === 'correct' && matches.length < roundConfig.totalPairs) {
       const t = setTimeout(() => { setStep('playing'); setFeedbackText('') }, 1800)
       return () => clearTimeout(t)
     }
-  }, [step, matches.length])
+  }, [roundConfig.totalPairs, step, matches.length])
 
   useEffect(() => {
-    if (matches.length === TOTAL_PAIRS && step === 'correct') {
+    if (matches.length === roundConfig.totalPairs && step === 'correct') {
       const t = setTimeout(() => { setStep('complete'); setFeedbackText('') }, 1200)
       return () => clearTimeout(t)
     }
-  }, [matches.length, step])
+  }, [matches.length, roundConfig.totalPairs, step])
 
   const nextRound = () => {
-    setItems(generateColorRound())
+    setItems(generateColorRound(roundConfig.palette))
     setMatches([])
     setStep('prompting')
     setRoundKey((k) => k + 1)
   }
 
-  const isAllDone = todayCompleted >= DAILY_GOAL
+  const isAllDone = todayCompleted >= roundConfig.dailyGoal
 
   /* ── SVG line: get item center in SVG coords ── */
   const getSvgCenter = (itemId) => {
@@ -201,7 +236,7 @@ function ColorLineGame() {
       </div>
 
       <div className="mx-6 mb-4">
-        <ProgressBar current={todayCompleted} total={DAILY_GOAL} />
+        <ProgressBar current={todayCompleted} total={roundConfig.dailyGoal} />
       </div>
 
       <main className="mx-auto flex max-w-4xl flex-col items-center px-4 pb-12">
@@ -209,7 +244,7 @@ function ColorLineGame() {
           <div className="mt-16 flex flex-col items-center gap-6">
             <div className="text-8xl">🎉</div>
             <h2 className="text-3xl font-bold text-[#3B82F6]">今日全部完成！</h2>
-            <p className="text-gray-500">今天完成了 {DAILY_GOAL} 对颜色配对！</p>
+            <p className="text-gray-500">今天完成了 {roundConfig.dailyGoal} 对颜色配对！</p>
             <button onClick={() => navigate('/')}
               className="rounded-2xl bg-[#3B82F6] px-8 py-3 font-medium text-white shadow-lg transition-all hover:bg-[#2563EB]"
             >返回首页</button>
@@ -218,7 +253,7 @@ function ColorLineGame() {
           <div className="mt-16 flex flex-col items-center gap-6">
             <div className="text-8xl">🎉</div>
             <h2 className="text-3xl font-bold text-[#3B82F6]">全部配对成功！</h2>
-            <p className="text-gray-500">你成功匹配了所有 {TOTAL_PAIRS} 对！</p>
+            <p className="text-gray-500">你成功匹配了所有 {roundConfig.totalPairs} 对！</p>
             <button onClick={nextRound}
               className="rounded-2xl bg-[#3B82F6] px-8 py-3 font-medium text-white shadow-lg transition-all hover:bg-[#2563EB]"
             >下一轮</button>
@@ -250,10 +285,10 @@ function ColorLineGame() {
                   })}
 
                   {/* Active drag line */}
-                  {dragging && dragFromId && (() => {
+                  {dragging && dragFromId !== null && (() => {
                     const from = getSvgCenter(dragFromId)
                     if (!from) return null
-                    const to = dropTargetId ? getSvgCenter(dropTargetId) : dragPos
+                    const to = dropTargetId !== null ? getSvgCenter(dropTargetId) : dragPos
                     const fi = items.find(i => i.id === dragFromId)
                     return (
                       <line x1={from.x} y1={from.y} x2={to.x} y2={to.y}
@@ -333,7 +368,7 @@ function ColorLineGame() {
 
             {/* Legend */}
             <div className="mt-12 flex flex-wrap justify-center gap-4">
-              {colorPalette.map((c) => (
+              {roundConfig.palette.map((c) => (
                 <div key={c.color} className="flex items-center gap-2">
                   <div className="h-5 w-5 rounded-full" style={{ backgroundColor: c.color }} />
                   <span className="text-sm text-gray-500">{c.name}</span>
