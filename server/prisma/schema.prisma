@@ -20,16 +20,17 @@ model ObjectNamingQuestion {
   updatedAt  DateTime @updatedAt
 }
 
-model EmojiMatchQuestion {
-  id          Int      @id @default(autoincrement())
-  prompt      String
-  answer      String
-  assetType   String   @default("emoji")
-  difficulty  Int      @default(1)
-  optionsJson String
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model EmotionEmoji {
+  id           Int      @id @default(autoincrement())
+  code         String   @unique
+  label        String
+  displayValue String   @unique
+  difficulty   Int      @default(1)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive, difficulty])
 }
 
 model ColorLineConfig {

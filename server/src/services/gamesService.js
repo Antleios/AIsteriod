@@ -1,4 +1,7 @@
+import { randomInt } from 'node:crypto'
 import prisma from '../db/prisma.js'
+
+const EMOJI_MATCH_OPTION_COUNT = 4
 
 const GAME_INFO = {
   'object-naming': {
@@ -58,22 +61,52 @@ function serializeObjectNamingQuestion(question) {
   }
 }
 
-function serializeEmojiMatchQuestion(question) {
-  return {
-    id: question.id,
-    prompt: question.prompt,
-    answer: question.answer,
-    hint: null,
-    assetType: question.assetType,
-    assetValue: null,
-    difficulty: question.difficulty,
-    options: parseJson(question.optionsJson, []).map((option, index) => ({
-      id: index + 1,
-      label: option.label,
-      displayValue: option.displayValue,
-      isCorrect: Boolean(option.isCorrect),
-    })),
+function shuffle(items) {
+  const shuffled = [...items]
+
+  for (let index = shuffled.length - 1; index > 0; index--) {
+    const swapIndex = randomInt(index + 1)
+    ;[shuffled[index], shuffled[swapIndex]] = [
+      shuffled[swapIndex],
+      shuffled[index],
+    ]
   }
+
+  return shuffled
+}
+
+export function buildEmojiMatchQuestions(emojis, questionCount) {
+  const distinctLabels = new Set(emojis.map((emoji) => emoji.label))
+  if (distinctLabels.size < EMOJI_MATCH_OPTION_COUNT) {
+    throw new Error('Emoji match requires at least 4 active emotion labels')
+  }
+
+  const targets = shuffle(emojis).slice(0, questionCount)
+
+  return targets.map((target) => {
+    const distractors = shuffle(
+      emojis.filter(
+        (emoji) => emoji.id !== target.id && emoji.label !== target.label,
+      ),
+    ).slice(0, EMOJI_MATCH_OPTION_COUNT - 1)
+    const options = shuffle([target, ...distractors])
+
+    return {
+      id: target.id,
+      prompt: target.label,
+      answer: target.label,
+      hint: null,
+      assetType: 'emoji',
+      assetValue: null,
+      difficulty: target.difficulty,
+      options: options.map((option) => ({
+        id: option.id,
+        label: option.label,
+        displayValue: option.displayValue,
+        isCorrect: option.id === target.id,
+      })),
+    }
+  })
 }
 
 export async function listGames() {
@@ -103,14 +136,18 @@ export async function getGameWithQuestions(slug) {
   }
 
   if (slug === 'emoji-match') {
-    const questions = await prisma.emojiMatchQuestion.findMany({
+    const emojis = await prisma.emotionEmoji.findMany({
       where: { isActive: true },
       orderBy: { id: 'asc' },
     })
+    const questions = buildEmojiMatchQuestions(
+      emojis,
+      GAME_INFO['emoji-match'].dailyGoal,
+    )
 
     return {
       game: GAME_INFO['emoji-match'],
-      questions: questions.map(serializeEmojiMatchQuestion),
+      questions,
     }
   }
 
