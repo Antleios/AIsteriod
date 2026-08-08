@@ -6,6 +6,32 @@ const colorPalette = [
   { color: '#9B59B6', name: '紫色' },
 ]
 
+function shuffle(items) {
+  const shuffled = [...items]
+
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+
+  return shuffled
+}
+
+function generateOppositeOrder(firstOrder) {
+  if (firstOrder.length < 2) return [...firstOrder]
+
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const candidate = shuffle(firstOrder)
+    const hasAlignedColor = candidate.some(
+      (colorIndex, columnIndex) => colorIndex === firstOrder[columnIndex],
+    )
+
+    if (!hasAlignedColor) return candidate
+  }
+
+  return [...firstOrder.slice(1), firstOrder[0]]
+}
+
 function generateColorRound(palette = colorPalette) {
   const activePalette = palette.length ? palette : colorPalette
   const items = []
@@ -14,17 +40,13 @@ function generateColorRound(palette = colorPalette) {
   const areaW = 82
   const areaH = 70
 
-  // assign each color to a column, then shuffle column order
-  const colOrder = [...Array(cols).keys()]
-  for (let i = colOrder.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[colOrder[i], colOrder[j]] = [colOrder[j], colOrder[i]]
-  }
+  const firstOrder = shuffle([...Array(cols).keys()])
+  const rowOrders = [firstOrder, generateOppositeOrder(firstOrder)]
 
   let id = 0
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const ci = colOrder[c]
+      const ci = rowOrders[r][c]
       const x = (c / cols) * areaW + (areaW / cols) * 0.3 + Math.random() * (areaW / cols) * 0.4
       const y = (r / rows) * areaH + (areaH / rows) * 0.25 + Math.random() * (areaH / rows) * 0.3
       items.push({
