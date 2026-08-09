@@ -10,6 +10,19 @@ const emotionEmojis = [
   { code: 'laughing', label: '大笑', displayValue: '😂' },
   { code: 'bored', label: '无聊', displayValue: '😑' },
   { code: 'surprised', label: '惊讶', displayValue: '😲' },
+  { code: 'excited', label: '兴奋', displayValue: '🤩' },
+  { code: 'loving', label: '喜爱', displayValue: '😍' },
+  { code: 'relaxed', label: '放松', displayValue: '😌' },
+  { code: 'confused', label: '困惑', displayValue: '😕' },
+  { code: 'worried', label: '担心', displayValue: '😟' },
+  { code: 'disappointed', label: '失望', displayValue: '😞' },
+  { code: 'embarrassed', label: '尴尬', displayValue: '😳' },
+  { code: 'impatient', label: '不耐烦', displayValue: '🙄' },
+  { code: 'playful', label: '调皮', displayValue: '🤪' },
+  { code: 'nauseous', label: '恶心', displayValue: '🤢' },
+  { code: 'calm', label: '平静', displayValue: '🙂' },
+  { code: 'touched', label: '感动', displayValue: '🥹' },
+  { code: 'confident', label: '自信', displayValue: '😎' },
 ]
 
 export default emotionEmojis

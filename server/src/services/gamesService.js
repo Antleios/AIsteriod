@@ -128,10 +128,14 @@ export async function getGameWithQuestions(slug) {
       where: { isActive: true },
       orderBy: { id: 'asc' },
     })
+    const selectedQuestions = shuffle(questions).slice(
+      0,
+      GAME_INFO['object-naming'].dailyGoal,
+    )
 
     return {
       game: GAME_INFO['object-naming'],
-      questions: questions.map(serializeObjectNamingQuestion),
+      questions: selectedQuestions.map(serializeObjectNamingQuestion),
     }
   }
 
