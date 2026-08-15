@@ -1,94 +1,43 @@
-const emotionSets = [
-  {
-    target: '开心',
-    options: [
-      { emoji: '😊', name: '开心', correct: true },
-      { emoji: '😢', name: '悲伤', correct: false },
-      { emoji: '😡', name: '愤怒', correct: false },
-      { emoji: '😨', name: '害怕', correct: false },
-    ],
-  },
-  {
-    target: '悲伤',
-    options: [
-      { emoji: '😢', name: '悲伤', correct: true },
-      { emoji: '😊', name: '开心', correct: false },
-      { emoji: '😴', name: '困倦', correct: false },
-      { emoji: '😰', name: '焦虑', correct: false },
-    ],
-  },
-  {
-    target: '愤怒',
-    options: [
-      { emoji: '😡', name: '愤怒', correct: true },
-      { emoji: '😭', name: '大哭', correct: false },
-      { emoji: '🤔', name: '思考', correct: false },
-      { emoji: '😊', name: '开心', correct: false },
-    ],
-  },
-  {
-    target: '害怕',
-    options: [
-      { emoji: '😨', name: '害怕', correct: true },
-      { emoji: '😡', name: '愤怒', correct: false },
-      { emoji: '😂', name: '大笑', correct: false },
-      { emoji: '😑', name: '无聊', correct: false },
-    ],
-  },
-  {
-    target: '惊讶',
-    options: [
-      { emoji: '😲', name: '惊讶', correct: true },
-      { emoji: '😊', name: '开心', correct: false },
-      { emoji: '😴', name: '困倦', correct: false },
-      { emoji: '😰', name: '焦虑', correct: false },
-    ],
-  },
-  {
-    target: '大哭',
-    options: [
-      { emoji: '😭', name: '大哭', correct: true },
-      { emoji: '😢', name: '悲伤', correct: false },
-      { emoji: '😨', name: '害怕', correct: false },
-      { emoji: '😂', name: '大笑', correct: false },
-    ],
-  },
-  {
-    target: '大笑',
-    options: [
-      { emoji: '😂', name: '大笑', correct: true },
-      { emoji: '😊', name: '开心', correct: false },
-      { emoji: '😭', name: '大哭', correct: false },
-      { emoji: '😲', name: '惊讶', correct: false },
-    ],
-  },
-  {
-    target: '困倦',
-    options: [
-      { emoji: '😴', name: '困倦', correct: true },
-      { emoji: '😡', name: '愤怒', correct: false },
-      { emoji: '😰', name: '焦虑', correct: false },
-      { emoji: '🤔', name: '思考', correct: false },
-    ],
-  },
-  {
-    target: '焦虑',
-    options: [
-      { emoji: '😰', name: '焦虑', correct: true },
-      { emoji: '😨', name: '害怕', correct: false },
-      { emoji: '😢', name: '悲伤', correct: false },
-      { emoji: '😴', name: '困倦', correct: false },
-    ],
-  },
-  {
-    target: '思考',
-    options: [
-      { emoji: '🤔', name: '思考', correct: true },
-      { emoji: '😲', name: '惊讶', correct: false },
-      { emoji: '😑', name: '无聊', correct: false },
-      { emoji: '😂', name: '大笑', correct: false },
-    ],
-  },
+export const emotionEmojis = [
+  { code: 'happy', name: '开心', emoji: '😊' },
+  { code: 'sad', name: '悲伤', emoji: '😢' },
+  { code: 'angry', name: '愤怒', emoji: '😡' },
+  { code: 'afraid', name: '害怕', emoji: '😨' },
+  { code: 'sleepy', name: '困倦', emoji: '😴' },
+  { code: 'anxious', name: '焦虑', emoji: '😰' },
+  { code: 'crying', name: '大哭', emoji: '😭' },
+  { code: 'thinking', name: '思考', emoji: '🤔' },
+  { code: 'laughing', name: '大笑', emoji: '😂' },
+  { code: 'bored', name: '无聊', emoji: '😑' },
+  { code: 'surprised', name: '惊讶', emoji: '😲' },
+  { code: 'excited', name: '兴奋', emoji: '🤩' },
+  { code: 'loving', name: '喜爱', emoji: '😍' },
+  { code: 'relaxed', name: '放松', emoji: '😌' },
+  { code: 'confused', name: '困惑', emoji: '😕' },
+  { code: 'worried', name: '担心', emoji: '😟' },
+  { code: 'disappointed', name: '失望', emoji: '😞' },
+  { code: 'embarrassed', name: '尴尬', emoji: '😳' },
+  { code: 'impatient', name: '不耐烦', emoji: '🙄' },
+  { code: 'playful', name: '调皮', emoji: '🤪' },
+  { code: 'nauseous', name: '恶心', emoji: '🤢' },
+  { code: 'calm', name: '平静', emoji: '🙂' },
+  { code: 'touched', name: '感动', emoji: '🥹' },
+  { code: 'confident', name: '自信', emoji: '😎' },
 ]
+
+const OPTION_COUNT = 4
+
+const emotionSets = emotionEmojis.map((target, targetIndex) => ({
+  target: target.name,
+  options: Array.from({ length: OPTION_COUNT }, (_, optionIndex) => {
+    const emotion = emotionEmojis[(targetIndex + optionIndex) % emotionEmojis.length]
+
+    return {
+      emoji: emotion.emoji,
+      name: emotion.name,
+      correct: emotion.code === target.code,
+    }
+  }),
+}))
 
 export default emotionSets
