@@ -1,4 +1,5 @@
 import express from 'express'
+import aiRouter from './routes/ai.js'
 import gamesRouter from './routes/games.js'
 import healthRouter from './routes/health.js'
 
@@ -34,6 +35,7 @@ app.use((req, res, next) => {
 
 app.use('/api/health', healthRouter)
 app.use('/api/games', gamesRouter)
+app.use('/api/ai', aiRouter)
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' })

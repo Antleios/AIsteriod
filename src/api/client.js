@@ -13,3 +13,20 @@ export async function apiGet(path) {
 
   return response.json()
 }
+
+export async function apiPost(path, body) {
+  const response = await fetch(`${configuredBaseUrl}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    throw new Error(`API request failed: ${response.status}`)
+  }
+
+  return response.json()
+}
