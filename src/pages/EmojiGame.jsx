@@ -139,11 +139,11 @@ function EmojiGame() {
   }
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-[#EAF4FF] via-white to-[#EAF4FF]/60">
+    <div className="relative flex min-h-screen flex-col bg-gradient-to-br from-[#EAF4FF] via-white to-[#EAF4FF]/60">
       {/* Top Bar */}
       <div className="flex items-center justify-between px-6 py-4">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/patient/games')}
           className="flex items-center gap-1 text-sm text-gray-400 transition-colors hover:text-[#3B82F6]"
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -152,7 +152,7 @@ function EmojiGame() {
           返回
         </button>
 
-        <h1 className="text-lg font-bold text-[#3B82F6]">表情匹配游戏</h1>
+        <h1 className="text-2xl font-bold text-[#3B82F6]">表情匹配游戏</h1>
 
         <div className="flex items-center gap-1 text-sm text-gray-500">
           <span>⭐</span>
@@ -166,7 +166,7 @@ function EmojiGame() {
       </div>
 
       {/* Main Content */}
-      <main className="mx-auto flex max-w-4xl flex-col items-center px-4 pb-12">
+      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-start px-4 pb-12 pt-16">
         {isAllDone ? (
           <div className="mt-16 flex flex-col items-center gap-6">
             <div className="text-8xl">🎉</div>
@@ -207,7 +207,7 @@ function EmojiGame() {
                     key={i}
                     onClick={() => handleSelect(opt, i)}
                     disabled={step !== 'waiting'}
-                    className={`group flex flex-col items-center gap-3 rounded-3xl p-6 shadow-lg backdrop-blur-sm transition-all duration-300 ${
+                    className={`group flex flex-col items-center gap-3 rounded-3xl p-7 shadow-lg backdrop-blur-sm transition-all duration-300 ${
                       step !== 'waiting'
                         ? isCorrectReveal
                           ? 'scale-105 bg-green-100 shadow-green-200'
@@ -217,7 +217,7 @@ function EmojiGame() {
                         : 'bg-white/60 hover:-translate-y-2 hover:bg-white hover:shadow-xl'
                     } ${isSelected && step === 'wrong' ? 'ring-2 ring-red-300' : ''}`}
                   >
-                    <span className="text-5xl transition-transform duration-300 group-hover:scale-110">
+                    <span className="text-6xl transition-transform duration-300 group-hover:scale-110">
                       {opt.emoji}
                     </span>
                     {isCorrectReveal && (

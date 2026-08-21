@@ -21,7 +21,7 @@ function PatientSelect() {
   ]
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-[#EAF4FF] via-white to-[#EAF4FF]/60">
+    <div className="relative flex min-h-screen flex-col bg-gradient-to-br from-[#EAF4FF] via-white to-[#EAF4FF]/60">
       {/* Top Bar */}
       <div className="flex items-center gap-4 px-6 py-5">
         <button
@@ -33,13 +33,13 @@ function PatientSelect() {
           </svg>
           返回首页
         </button>
-        <h1 className="flex-1 text-center text-lg font-bold text-[#3B82F6]">患者端</h1>
+        <h1 className="flex-1 text-center text-2xl font-bold text-[#3B82F6]">患者端</h1>
         <div className="w-[88px]" />
       </div>
 
       {/* Choose an option */}
-      <main className="mx-auto flex max-w-3xl flex-col items-center px-4 pb-16 pt-8">
-        <p className="mb-8 text-sm tracking-widest text-gray-400">请选择要进行的活动</p>
+      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center px-4 pb-16">
+        <p className="mb-8 text-base tracking-widest text-gray-400">请选择要进行的活动</p>
         <div className="flex w-full flex-col gap-8 md:flex-row md:justify-center md:gap-12">
           {options.map((o) => (
             <button
@@ -49,7 +49,7 @@ function PatientSelect() {
             >
               {/* Icon */}
               <div
-                className="flex h-20 w-20 items-center justify-center rounded-3xl text-4xl shadow-md transition-transform duration-300 group-hover:scale-110"
+                className="flex h-24 w-24 items-center justify-center rounded-3xl text-5xl shadow-md transition-transform duration-300 group-hover:scale-110"
                 style={{ backgroundColor: `${o.color}15` }}
               >
                 {o.emoji}
@@ -57,8 +57,8 @@ function PatientSelect() {
 
               {/* Text */}
               <div className="text-center">
-                <h2 className="text-2xl font-bold text-[#1E3A5F]">{o.title}</h2>
-                <p className="mt-2 text-sm text-gray-500">{o.desc}</p>
+                <h2 className="text-3xl font-bold text-[#1E3A5F]">{o.title}</h2>
+                <p className="mt-2 text-base text-gray-500">{o.desc}</p>
               </div>
 
               {/* Arrow */}

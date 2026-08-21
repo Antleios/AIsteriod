@@ -28,7 +28,7 @@ function Patient() {
   const navigate = useNavigate()
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-[#EAF4FF] via-white to-[#EAF4FF]/60">
+    <div className="relative flex min-h-screen flex-col bg-gradient-to-br from-[#EAF4FF] via-white to-[#EAF4FF]/60">
       {/* Top Bar */}
       <div className="flex items-center gap-4 px-6 py-5">
         <button
@@ -40,22 +40,22 @@ function Patient() {
           </svg>
           返回
         </button>
-        <h1 className="flex-1 text-center text-lg font-bold text-[#3B82F6]">训练游戏</h1>
+        <h1 className="flex-1 text-center text-2xl font-bold text-[#3B82F6]">训练游戏</h1>
         <div className="w-[88px]" />
       </div>
 
       {/* Cards */}
-      <main className="mx-auto flex max-w-lg flex-col items-center gap-6 px-4 pb-16 pt-6">
+      <main className="mx-auto flex w-full max-w-lg flex-1 flex-col items-center justify-center gap-6 px-4 pb-16">
         {games.map((g) => (
           <button
             key={g.path}
             onClick={() => navigate(g.path)}
-            className="group w-full rounded-3xl border border-white/40 bg-white/70 p-6 shadow-lg backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+            className="group w-full rounded-3xl border border-white/40 bg-white/70 p-7 shadow-lg backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
           >
             <div className="flex items-center gap-5">
               {/* Emoji icon */}
               <div
-                className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl text-3xl shadow-md"
+                className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-2xl text-4xl shadow-md"
                 style={{ backgroundColor: `${g.color}15` }}
               >
                 {g.emoji}
@@ -63,8 +63,8 @@ function Patient() {
 
               {/* Text */}
               <div className="flex-1 text-left">
-                <h2 className="text-xl font-bold text-[#1E3A5F]">{g.title}</h2>
-                <p className="mt-1 text-sm text-gray-500">{g.desc}</p>
+                <h2 className="text-2xl font-bold text-[#1E3A5F]">{g.title}</h2>
+                <p className="mt-1 text-base text-gray-500">{g.desc}</p>
               </div>
 
               {/* Arrow */}
