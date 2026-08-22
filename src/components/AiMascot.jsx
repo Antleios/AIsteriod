@@ -1,18 +1,28 @@
 import { useEffect, useRef } from 'react'
 
 /**
- * AiMascot —— 一个简单的黄色圆脸，用最少的线条表达表情。
+ * AiMascot —— 一个简单的黄色圆脸。
  *
  * 造型：
- *   · 黄色圆脸 + 细描边，只有眼睛和嘴巴几根线
- *   · 三种表情（expression）：平静 / 开心 / 喜欢
+ *   · 黄色圆脸 + 细描边，没有嘴巴
+ *   · 两种状态（expression）：calm 平静 / loving 喜欢（头顶冒小爱心）
  *   · 眼睛跟随鼠标：pointermove 计算指针相对脸部中心的偏移，
  *     在 rAF 循环里直接写眼睛组的 SVG transform（不触发 React 重渲染）
- *   · 说话时（speaking）嘴巴开合
+ *   · 聆听时（listening）下巴附近三个小点闪烁
  */
+
+// 喜欢状态下从头顶冒出来的小爱心（位置 / 大小 / 动画延迟）
+const FLOAT_HEARTS = [
+  { left: '8%', top: '30%', size: 20, delay: '0s' },
+  { left: '28%', top: '10%', size: 15, delay: '0.6s' },
+  { left: '50%', top: '22%', size: 18, delay: '1.1s' },
+  { left: '68%', top: '6%', size: 14, delay: '1.6s' },
+  { left: '84%', top: '28%', size: 20, delay: '2.1s' },
+  { left: '42%', top: '-4%', size: 22, delay: '0.3s' },
+]
+
 function AiMascot({
-  expression = 'calm', // calm | happy | loving
-  speaking = false,
+  expression = 'calm', // calm | loving
   listening = false,
   size = 180,
 }) {
@@ -80,92 +90,18 @@ function AiMascot({
         {/* 黄色圆脸 */}
         <circle cx="100" cy="100" r="86" fill="#FFD94A" stroke="#F0B400" strokeWidth="4" />
 
-        {/* 腮红：开心 / 喜欢时出现 */}
-        {(expression === 'happy' || expression === 'loving') && (
-          <>
-            <ellipse cx="52" cy="122" rx="12" ry="7" fill="#FF9E80" opacity="0.55" />
-            <ellipse cx="148" cy="122" rx="12" ry="7" fill="#FF9E80" opacity="0.55" />
-          </>
-        )}
-
         {/* 左眼（跟随鼠标）：外层定位组 + 内层跟随组，避免覆盖基础位置 */}
         <g transform="translate(74, 88)">
           <g ref={eyeLeftRef}>
-            {expression === 'loving' ? (
-              /* 喜欢：♥ 眼睛 */
-              <path
-                d="M0 4 C-5 -2 -12 -1 -10 4 C-8 9 0 13 0 13 C0 13 8 9 10 4 C12 -1 5 -2 0 4 Z"
-                fill="#E5484D"
-              />
-            ) : (
-              <circle r="8.5" fill="#333333" />
-            )}
+            <circle r="8.5" fill="#333333" />
           </g>
         </g>
         {/* 右眼（跟随鼠标）：外层定位组 + 内层跟随组 */}
         <g transform="translate(126, 88)">
           <g ref={eyeRightRef}>
-            {expression === 'loving' ? (
-              <path
-                d="M0 4 C-5 -2 -12 -1 -10 4 C-8 9 0 13 0 13 C0 13 8 9 10 4 C12 -1 5 -2 0 4 Z"
-                fill="#E5484D"
-              />
-            ) : (
-              <circle r="8.5" fill="#333333" />
-            )}
+            <circle r="8.5" fill="#333333" />
           </g>
         </g>
-
-        {/* 嘴巴（按表情）——平时循环开合，说话时更快更夸张 */}
-        <g className={`mascot-mouth ${speaking ? 'mascot-mouth-fast' : ''}`}>
-          {expression === 'calm' && (
-            /* 平静：一条平缓的线 */
-            <path
-              d="M78 132 Q100 142 122 132"
-              fill="none"
-              stroke="#333333"
-              strokeWidth="5"
-              strokeLinecap="round"
-            />
-          )}
-          {expression === 'happy' && (
-            /* 开心：张开大笑（带舌头） */
-            <>
-              <path
-                d="M68 124 Q100 160 132 124 Q100 148 68 124 Z"
-                fill="#333333"
-              />
-              <path
-                d="M86 140 Q100 152 114 140 Q100 148 86 140 Z"
-                fill="#FF6B6B"
-              />
-            </>
-          )}
-          {expression === 'loving' && (
-            /* 喜欢：微笑 + 上弯眼睛情绪，简单弧线 */
-            <path
-              d="M72 128 Q100 146 128 128"
-              fill="none"
-              stroke="#333333"
-              strokeWidth="5"
-              strokeLinecap="round"
-            />
-          )}
-        </g>
-
-        {/* 喜欢：飘出的小爱心 */}
-        {expression === 'loving' && (
-          <>
-            <path
-              d="M60 52 C56 47 49 48 49 53 C49 58 60 64 60 64 C60 64 71 58 71 53 C71 48 64 47 60 52 Z"
-              fill="#FF6B81"
-            />
-            <path
-              d="M136 42 C132 37 125 38 125 43 C125 48 136 54 136 54 C136 54 147 48 147 43 C147 38 140 37 136 42 Z"
-              fill="#FF9E9E"
-            />
-          </>
-        )}
 
         {/* 聆听中：下巴附近三个小点闪烁 */}
         {listening && (
@@ -191,21 +127,39 @@ function AiMascot({
         )}
       </svg>
 
+      {/* 喜欢：头顶冒出的小爱心 */}
+      {expression === 'loving' && (
+        <div className="mascot-hearts pointer-events-none" aria-hidden>
+          {FLOAT_HEARTS.map((h, i) => (
+            <span
+              key={i}
+              className="mascot-heart"
+              style={{ left: h.left, top: h.top, width: h.size, height: h.size, animationDelay: h.delay }}
+            >
+              <svg viewBox="0 0 24 24" className="h-full w-full">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="#FF6B81" />
+              </svg>
+            </span>
+          ))}
+        </div>
+      )}
+
       <style>{`
-        /* 嘴巴：一直循环开合（说话感），播报语音时更快更夸张 */
-        .mascot-mouth {
-          transform-box: fill-box;
-          transform-origin: center;
-          animation: mouthLoop 1.5s ease-in-out infinite;
+        /* 喜欢：小爱心从头顶冒出来，上浮 + 轻微摇摆 + 淡出 */
+        .mascot-hearts {
+          position: absolute;
+          inset: 0;
         }
-        @keyframes mouthLoop {
-          0%, 100% { transform: scaleY(0.55); }
-          25%      { transform: scaleY(1.1); }
-          50%      { transform: scaleY(0.7); }
-          75%      { transform: scaleY(1.02); }
+        .mascot-heart {
+          position: absolute;
+          opacity: 0;
+          animation: heartFloat 2.8s ease-in-out infinite;
         }
-        .mascot-mouth-fast {
-          animation-duration: 0.4s;
+        @keyframes heartFloat {
+          0%   { opacity: 0; transform: translateY(6px) scale(0.5); }
+          15%  { opacity: 1; }
+          60%  { opacity: 0.95; }
+          100% { opacity: 0; transform: translateY(-64px) translateX(4px) scale(1.15); }
         }
 
         /* 聆听小点闪烁 */

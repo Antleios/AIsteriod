@@ -10,12 +10,12 @@ function AIChat() {
 
   const [conversation, setConversation] = useState([]) // [{ role, content }]，真实 AI 接入时即完整对话历史
   const [transcript, setTranscript] = useState('') // 正在聆听时实时回显
-  const [mascotExpression, setMascotExpression] = useState('calm') // calm | happy | loving
-  const [isSpeaking, setIsSpeaking] = useState(false) // 小星语音播报中，嘴型加快
+  const [mascotExpression, setMascotExpression] = useState('calm') // calm | loving
   const [listening, setListening] = useState(false) // 正在聆听用户说话
   const [voiceError, setVoiceError] = useState('')
 
   const handlingRef = useRef(false) // 等待 AI 回复期间锁住，禁止连续发送
+  const loveTimeoutRef = useRef(null) // 「喜欢」表情的计时器
   const sendMessageRef = useRef(null) // 供语音 onend 调用最新的 sendMessage
   const recognitionRef = useRef(null)
   const transcriptRef = useRef('')
@@ -39,6 +39,13 @@ function AIChat() {
     window.speechSynthesis.speak(utter)
   }, [])
 
+  // 显示「喜欢」表情（头顶冒小爱心），4 秒后恢复平静
+  const showLoving = useCallback(() => {
+    setMascotExpression('loving')
+    if (loveTimeoutRef.current) clearTimeout(loveTimeoutRef.current)
+    loveTimeoutRef.current = setTimeout(() => setMascotExpression('calm'), 4000)
+  }, [])
+
   const sendMessage = useCallback(
     async (raw) => {
       const content = (raw ?? '').trim()
@@ -49,30 +56,28 @@ function AIChat() {
       const nextMessages = [...conversation, userMsg]
       setConversation(nextMessages)
 
-      // 表达喜欢的话 → 回复结束后换成「喜欢」表情
-      const positive = /喜欢|谢谢|感谢|爱|棒|开心|好呀|好哒/.test(content)
+      // 听到喜欢的话 → 立刻换成「喜欢」表情（冒小爱心）
+      const positive = /喜欢|谢谢|感谢|爱|棒|开心|好呀|好哒|真棒|聪明|爱你|感谢你/.test(content)
 
       try {
         const { reply } = await requestAIMessage(nextMessages) // 唯一 AI 入口
         setConversation((prev) => [...prev, { role: 'assistant', content: reply }])
-        setMascotExpression('happy')
-        setIsSpeaking(true)
+        // 用户的话或 AI 回复里带积极词，都会触发爱心
+        const positiveReply = /喜欢|谢谢|感谢|爱|棒|开心|好呀|好哒|真棒|聪明|加油|太棒/.test(reply)
+        if (positive || positiveReply) {
+          showLoving()
+        } else {
+          setMascotExpression('calm')
+        }
         speak(reply, () => {
-          setIsSpeaking(false)
           handlingRef.current = false
-          if (positive) {
-            setMascotExpression('loving')
-            setTimeout(() => setMascotExpression('calm'), 3200)
-          } else {
-            setMascotExpression('calm')
-          }
         })
       } catch {
         handlingRef.current = false
         setMascotExpression('calm')
       }
     },
-    [conversation, speak],
+    [conversation, speak, showLoving],
   )
 
   // 每次渲染后同步最新 sendMessage 到 ref，供语音 onend 回调调用
@@ -83,12 +88,7 @@ function AIChat() {
   // 开场白：小星先打招呼
   useEffect(() => {
     setConversation([{ role: 'assistant', content: GREETING }])
-    setMascotExpression('happy')
-    setIsSpeaking(true)
-    speak(GREETING, () => {
-      setIsSpeaking(false)
-      setMascotExpression('calm')
-    })
+    speak(GREETING)
   }, [speak])
 
   // 新消息自动滚到底部
@@ -115,7 +115,6 @@ function AIChat() {
     }
     // 停掉 AI 正在播报的语音，防止被麦克风拾音进去
     if (window.speechSynthesis) window.speechSynthesis.cancel()
-    setIsSpeaking(false)
     setVoiceError('')
     setListening(true)
     setTranscript('')
@@ -171,6 +170,7 @@ function AIChat() {
   // 卸载时清理
   useEffect(() => {
     return () => {
+      if (loveTimeoutRef.current) clearTimeout(loveTimeoutRef.current)
       stopListening()
       if (window.speechSynthesis) window.speechSynthesis.cancel()
     }
@@ -216,14 +216,9 @@ function AIChat() {
         </div>
       </div>
 
-      {/* 吉祥物（放下面一点）：黄色圆脸，眼睛跟随鼠标，嘴巴循环开合 */}
+      {/* 吉祥物（放下面一点）：黄色圆脸，眼睛跟随鼠标，听到喜欢的话会冒小爱心 */}
       <div className="flex justify-center pt-1 pb-1">
-        <AiMascot
-          expression={mascotExpression}
-          speaking={isSpeaking}
-          listening={listening}
-          size={170}
-        />
+        <AiMascot expression={mascotExpression} listening={listening} size={170} />
       </div>
 
       {/* 语音控制区：只有麦克风，说完自动发送 */}
