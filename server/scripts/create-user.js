@@ -1,7 +1,6 @@
 import 'dotenv/config'
-import { Prisma } from '@prisma/client'
 import prisma from '../src/db/prisma.js'
-import { createUser } from '../src/services/authService.js'
+import { AuthError, createUser } from '../src/services/authService.js'
 import {
   createUserSchema,
   serializeValidationIssues,
@@ -44,10 +43,7 @@ async function main() {
 
 main()
   .catch((error) => {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002'
-    ) {
+    if (error instanceof AuthError && error.code === 'USERNAME_TAKEN') {
       console.error('创建失败：用户名已存在')
     } else {
       console.error(error)

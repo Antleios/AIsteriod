@@ -393,6 +393,7 @@ export async function createTrainingSession(user, input) {
 }
 
 export async function listTrainingSessions(user) {
+  assertPatient(user)
   const sessions = await prisma.trainingSession.findMany({
     where: { userId: user.id },
     orderBy: { startedAt: 'desc' },
@@ -403,6 +404,7 @@ export async function listTrainingSessions(user) {
 }
 
 export async function getTrainingSession(user, sessionId) {
+  assertPatient(user)
   return serializeSession(await loadSessionDetail(user.id, sessionId), { detail: true })
 }
 
@@ -663,6 +665,7 @@ export async function finalizeTrainingSession(user, sessionId) {
 }
 
 export async function getTrainingTrends(user) {
+  assertPatient(user)
   const sessions = await prisma.trainingSession.findMany({
     where: { userId: user.id, status: 'COMPLETED', metricsJson: { not: null } },
     orderBy: { endedAt: 'desc' },
@@ -695,11 +698,16 @@ export async function createCareAssignment(user, { clinicianId, patientId }) {
 
   const users = await prisma.user.findMany({
     where: { id: { in: [clinicianId, patientId] } },
-    select: { id: true, role: true },
+    select: { id: true, role: true, status: true },
   })
   const clinician = users.find((candidate) => candidate.id === clinicianId)
   const patient = users.find((candidate) => candidate.id === patientId)
-  if (clinician?.role !== 'DOCTOR' || patient?.role !== 'PATIENT') {
+  if (
+    clinician?.role !== 'DOCTOR' ||
+    clinician.status !== 'ACTIVE' ||
+    patient?.role !== 'PATIENT' ||
+    patient.status !== 'ACTIVE'
+  ) {
     throw new TrainingError(400, 'INVALID_CARE_ASSIGNMENT', '关联必须包含一名医生和一名患者')
   }
 

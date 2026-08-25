@@ -33,6 +33,7 @@ const env = {
   DATABASE_URL: `file:${databasePath}`,
   NODE_ENV: 'test',
   AUTH_LOGIN_MAX_ATTEMPTS: '100',
+  AUTH_REGISTER_MAX_ATTEMPTS: '100',
 }
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
 

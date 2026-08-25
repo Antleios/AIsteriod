@@ -37,6 +37,20 @@ export const createUserSchema = z
   })
   .strict()
 
+// 公开注册不允许创建管理员；医生账号必须由管理员审核后才可登录。
+export const registerUserSchema = z
+  .object({
+    username: usernameSchema,
+    password: passwordSchema,
+    displayName: z
+      .string()
+      .trim()
+      .min(1, '显示名称不能为空')
+      .max(50, '显示名称不能超过 50 个字符'),
+    role: z.enum(['PATIENT', 'DOCTOR']).default('PATIENT'),
+  })
+  .strict()
+
 export function serializeValidationIssues(error) {
   return error.issues.map((issue) => ({
     field: issue.path.join('.'),

@@ -1,6 +1,7 @@
 const DEFAULT_SESSION_TTL_DAYS = 7
 const DEFAULT_LOGIN_WINDOW_MINUTES = 15
 const DEFAULT_LOGIN_MAX_ATTEMPTS = 10
+const DEFAULT_REGISTER_MAX_ATTEMPTS = 5
 
 function positiveInteger(value, fallback) {
   const parsed = Number.parseInt(value ?? '', 10)
@@ -8,7 +9,7 @@ function positiveInteger(value, fallback) {
 }
 
 export const USER_ROLES = ['PATIENT', 'DOCTOR', 'ADMIN']
-export const USER_STATUSES = ['ACTIVE', 'DISABLED']
+export const USER_STATUSES = ['PENDING', 'ACTIVE', 'DISABLED']
 
 export const authConfig = {
   sessionTtlMs:
@@ -30,6 +31,10 @@ export const authConfig = {
   loginMaxAttempts: positiveInteger(
     process.env.AUTH_LOGIN_MAX_ATTEMPTS,
     DEFAULT_LOGIN_MAX_ATTEMPTS,
+  ),
+  registerMaxAttempts: positiveInteger(
+    process.env.AUTH_REGISTER_MAX_ATTEMPTS,
+    DEFAULT_REGISTER_MAX_ATTEMPTS,
   ),
   cookieName:
     process.env.NODE_ENV === 'production'

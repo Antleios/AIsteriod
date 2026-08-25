@@ -46,6 +46,131 @@ after(async () => {
 })
 
 describe('authentication API', () => {
+  it('registers patients as active accounts and signs them in immediately', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .set('Origin', allowedOrigin)
+      .send({
+        username: 'Patient.Registered',
+        password: 'registered-correct-horse-battery-staple',
+        displayName: '新患者',
+        role: 'PATIENT',
+      })
+
+    assert.equal(response.status, 201)
+    assert.equal(response.body.user.username, 'patient.registered')
+    assert.equal(response.body.user.role, 'PATIENT')
+    assert.equal(response.body.user.status, 'ACTIVE')
+    assert.deepEqual(response.body.registration, { requiresApproval: false })
+    assert.match(response.headers['set-cookie'][0], /HttpOnly/)
+
+    const meResponse = await request(app)
+      .get('/api/auth/me')
+      .set('Cookie', sessionCookie(response))
+    assert.equal(meResponse.status, 200)
+    assert.equal(meResponse.body.user.role, 'PATIENT')
+
+    const duplicate = await request(app)
+      .post('/api/auth/register')
+      .set('Origin', allowedOrigin)
+      .send({
+        username: 'patient.registered',
+        password: 'registered-correct-horse-battery-staple',
+        displayName: '重复患者',
+      })
+    assert.equal(duplicate.status, 409)
+    assert.equal(duplicate.body.error.code, 'USERNAME_TAKEN')
+  })
+
+  it('keeps doctor registrations pending until an administrator approves them', async () => {
+    const doctorRegistration = await request(app)
+      .post('/api/auth/register')
+      .set('Origin', allowedOrigin)
+      .send({
+        username: 'doctor.registered',
+        password: 'registered-correct-horse-battery-staple',
+        displayName: '待审核医生',
+        role: 'DOCTOR',
+      })
+
+    assert.equal(doctorRegistration.status, 202)
+    assert.equal(doctorRegistration.body.user.role, 'DOCTOR')
+    assert.equal(doctorRegistration.body.user.status, 'PENDING')
+    assert.deepEqual(doctorRegistration.body.registration, { requiresApproval: true })
+    assert.equal(doctorRegistration.headers['set-cookie'], undefined)
+
+    const pendingLogin = await request(app)
+      .post('/api/auth/login')
+      .set('Origin', allowedOrigin)
+      .send({
+        username: 'doctor.registered',
+        password: 'registered-correct-horse-battery-staple',
+      })
+    assert.equal(pendingLogin.status, 403)
+    assert.equal(pendingLogin.body.error.code, 'ACCOUNT_PENDING_APPROVAL')
+
+    const patientRegistration = await request(app)
+      .post('/api/auth/register')
+      .set('Origin', allowedOrigin)
+      .send({
+        username: 'patient.forbidden',
+        password: 'registered-correct-horse-battery-staple',
+        displayName: '普通患者',
+      })
+    const patientCookie = sessionCookie(patientRegistration)
+    const forbiddenList = await request(app)
+      .get('/api/auth/admin/doctor-registrations')
+      .set('Cookie', patientCookie)
+    assert.equal(forbiddenList.status, 403)
+    assert.equal(forbiddenList.body.error.code, 'ROLE_REQUIRED')
+
+    await createUser({
+      username: 'admin.registration',
+      password: 'correct-horse-battery-staple',
+      displayName: '审核管理员',
+      role: 'ADMIN',
+    })
+    const adminCookie = sessionCookie(await login('admin.registration'))
+    const pendingList = await request(app)
+      .get('/api/auth/admin/doctor-registrations')
+      .set('Cookie', adminCookie)
+    assert.equal(pendingList.status, 200)
+    assert.equal(pendingList.body.users.length, 1)
+    assert.equal(pendingList.body.users[0].id, doctorRegistration.body.user.id)
+
+    const approved = await request(app)
+      .post(`/api/auth/admin/doctor-registrations/${doctorRegistration.body.user.id}/approve`)
+      .set('Origin', allowedOrigin)
+      .set('Cookie', adminCookie)
+    assert.equal(approved.status, 200)
+    assert.equal(approved.body.user.status, 'ACTIVE')
+
+    const doctorLogin = await request(app)
+      .post('/api/auth/login')
+      .set('Origin', allowedOrigin)
+      .send({
+        username: 'doctor.registered',
+        password: 'registered-correct-horse-battery-staple',
+      })
+    assert.equal(doctorLogin.status, 200)
+    assert.equal(doctorLogin.body.user.role, 'DOCTOR')
+  })
+
+  it('does not allow public registration of administrators', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .set('Origin', allowedOrigin)
+      .send({
+        username: 'admin.self-registered',
+        password: 'registered-correct-horse-battery-staple',
+        displayName: '越权管理员',
+        role: 'ADMIN',
+      })
+
+    assert.equal(response.status, 400)
+    assert.equal(response.body.error.code, 'VALIDATION_ERROR')
+  })
+
   it('creates a normalized account through the administrator command', async () => {
     const { stdout } = await execFileAsync(
       process.execPath,

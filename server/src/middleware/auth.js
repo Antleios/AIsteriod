@@ -27,3 +27,24 @@ export function requireAuthentication(req, res, next) {
 
   next()
 }
+
+export function requireRole(...roles) {
+  return function requireRoleMiddleware(req, res, next) {
+    if (!req.auth) {
+      requireAuthentication(req, res, next)
+      return
+    }
+
+    if (!roles.includes(req.auth.user.role)) {
+      res.status(403).json({
+        error: {
+          code: 'ROLE_REQUIRED',
+          message: '当前账号没有执行此操作的权限',
+        },
+      })
+      return
+    }
+
+    next()
+  }
+}
