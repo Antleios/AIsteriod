@@ -45,3 +45,174 @@ model ColorLineConfig {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// 登录凭据会话。它只用于认证，不能承载一次训练的业务数据。
+model User {
+  id               Int               @id @default(autoincrement())
+  username         String            @unique
+  passwordHash     String
+  displayName      String
+  role             String            @default("PATIENT")
+  status           String            @default("ACTIVE")
+  lastLoginAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  authSessions     AuthSession[]
+  trainingSessions TrainingSession[]
+  clinicianAssignments CareAssignment[] @relation("ClinicianAssignments")
+  patientAssignments   CareAssignment[] @relation("PatientAssignments")
+
+  @@index([role, status])
+}
+
+model AuthSession {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     Int
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt, revokedAt])
+}
+
+// 一次患者训练；与 AuthSession 分离，登录失效不会删除训练记录。
+model TrainingSession {
+  id                       String             @id @default(cuid())
+  userId                   Int
+  status                   String             @default("ACTIVE")
+  startedAt                DateTime           @default(now())
+  endedAt                  DateTime?
+  metadataJson             String?
+  metricsJson              String?
+  nextGameRunSequence      Int                @default(1)
+  nextConversationSequence Int                @default(1)
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+  user                     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gameRuns                 GameRun[]
+  interactionEvents        InteractionEvent[]
+  conversationTurns        ConversationTurn[]
+  summary                  SessionSummary?
+
+  @@index([userId, startedAt])
+  @@index([status, startedAt])
+}
+
+model GameRun {
+  id                  String           @id @default(cuid())
+  sessionId           String
+  gameCode            String
+  sequence            Int
+  status              String           @default("ACTIVE")
+  startedAt           DateTime         @default(now())
+  endedAt             DateTime?
+  configSnapshotJson  String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  session             TrainingSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questions           GameRunQuestion[]
+  interactionEvents   InteractionEvent[]
+
+  @@unique([sessionId, sequence])
+  @@index([sessionId, gameCode])
+}
+
+model GameRunQuestion {
+  id                String        @id @default(cuid())
+  gameRunId         String
+  position          Int
+  sourceQuestionId  Int?
+  questionType      String
+  clientPayloadJson String
+  answerJson        String
+  completedAt       DateTime?
+  createdAt         DateTime      @default(now())
+  gameRun           GameRun       @relation(fields: [gameRunId], references: [id], onDelete: Cascade)
+  attempts          GameAttempt[]
+
+  @@unique([gameRunId, position])
+  @@index([gameRunId, sourceQuestionId])
+}
+
+model GameAttempt {
+  id                String          @id @default(cuid())
+  gameRunQuestionId String
+  answerJson        String?
+  outcome           String
+  responseTimeMs    Int?
+  createdAt         DateTime        @default(now())
+  question          GameRunQuestion @relation(fields: [gameRunQuestionId], references: [id], onDelete: Cascade)
+
+  @@index([gameRunQuestionId, createdAt])
+}
+
+model InteractionEvent {
+  id            String          @id @default(cuid())
+  sessionId     String
+  gameRunId     String?
+  clientEventId String
+  type          String
+  occurredAt    DateTime
+  dataJson      String?
+  createdAt     DateTime        @default(now())
+  session       TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  gameRun       GameRun?        @relation(fields: [gameRunId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, clientEventId])
+  @@index([sessionId, occurredAt])
+  @@index([gameRunId, occurredAt])
+}
+
+model ConversationTurn {
+  id                String          @id @default(cuid())
+  sessionId         String
+  sequence          Int
+  role              String
+  context           String          @default("CHAT")
+  content           String
+  inputMethod       String?
+  responseLatencyMs Int?
+  isUserInitiated   Boolean         @default(false)
+  metadataJson      String?
+  createdAt         DateTime        @default(now())
+  session           TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, sequence])
+  @@index([sessionId, createdAt])
+}
+
+model SessionSummary {
+  id            String          @id @default(cuid())
+  sessionId     String          @unique
+  status        String          @default("PENDING")
+  provider      String?
+  promptVersion String?
+  inputJson     String?
+  resultJson    String?
+  errorMessage  String?
+  generatedAt   DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  session       TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
+
+// 只有存在 ACTIVE 关联的医生才能读取患者的训练摘要和指标。
+model CareAssignment {
+  id          String   @id @default(cuid())
+  clinicianId Int
+  patientId   Int
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  clinician   User     @relation("ClinicianAssignments", fields: [clinicianId], references: [id], onDelete: Cascade)
+  patient     User     @relation("PatientAssignments", fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicianId, patientId])
+  @@index([patientId, status])
+}
