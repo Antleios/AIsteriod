@@ -38,6 +38,7 @@ const env = {
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
 
 try {
+  await run(npx, ['prisma', 'generate'], env)
   await run(npx, ['prisma', 'migrate', 'deploy'], env)
   await run(process.execPath, ['prisma/seed.js'], env)
   // API tests share one temporary SQLite database, so test files must not

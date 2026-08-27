@@ -1,4 +1,5 @@
 import { apiPost } from './client.js'
+import { requestSessionAiReply } from './training.js'
 
 const MOCK_REPLIES = [
   '好的，我听到啦！你能再说具体一点吗？',
@@ -32,7 +33,7 @@ function mockReply(messages) {
  *   字符串 → 单条用户发言；数组 → 完整对话历史（可直接喂给真实 LLM）
  * @returns {Promise<{reply: string}>}
  */
-export async function requestAIMessage(messages) {
+export async function requestAIMessage(messages, options = {}) {
   const payload = {
     messages:
       typeof messages === 'string'
@@ -41,8 +42,20 @@ export async function requestAIMessage(messages) {
   }
 
   try {
+    const latestUserMessage = [...payload.messages].reverse().find((message) => message.role === 'user')
+    if (latestUserMessage) {
+      const interaction = await requestSessionAiReply({
+        userText: latestUserMessage.content,
+        inputMethod: options.inputMethod ?? 'TEXT',
+        context: 'CHAT',
+      })
+      if (interaction?.reply) {
+        return { reply: interaction.reply, emotion: interaction.emotion }
+      }
+    }
+
     const data = await apiPost('/api/ai/chat', payload)
-    return { reply: data.reply ?? '' }
+    return { reply: data.reply ?? '', emotion: data.emotion }
   } catch (error) {
     console.warn('AI 服务暂不可用，使用本地模拟回复：', error)
     return { reply: mockReply(payload.messages) }

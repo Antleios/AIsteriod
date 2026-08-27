@@ -1,19 +1,60 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchCurrentUser, logout } from '../api/auth.js'
+import {
+  clearActiveTrainingSession,
+  finishTrainingSession,
+  getActiveTrainingSession,
+} from '../api/training.js'
 
 function PatientSelect() {
   const navigate = useNavigate()
   const [user, setUser] = useState(null)
+  const [hasActiveTraining, setHasActiveTraining] = useState(false)
+  const [finishingTraining, setFinishingTraining] = useState(false)
+  const [trainingMessage, setTrainingMessage] = useState('')
 
   useEffect(() => {
-    fetchCurrentUser().then(setUser)
+    let cancelled = false
+    fetchCurrentUser().then(async (currentUser) => {
+      if (cancelled) return
+      setUser(currentUser)
+      if (!currentUser || currentUser.role !== 'PATIENT') {
+        setHasActiveTraining(false)
+        return
+      }
+      try {
+        const activeTraining = await getActiveTrainingSession()
+        if (!cancelled) setHasActiveTraining(Boolean(activeTraining))
+      } catch {
+        if (!cancelled) setHasActiveTraining(false)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const handleLogout = async () => {
     await logout()
+    clearActiveTrainingSession()
     setUser(null)
     navigate('/')
+  }
+
+  const handleFinishTraining = async () => {
+    if (!window.confirm('结束本次训练并生成医生摘要吗？结束后不能继续写入本次记录。')) return
+    setFinishingTraining(true)
+    setTrainingMessage('')
+    try {
+      await finishTrainingSession()
+      setHasActiveTraining(false)
+      setTrainingMessage('本次训练已保存，摘要已生成。')
+    } catch (error) {
+      setTrainingMessage(error.message || '结束训练失败，请稍后重试。')
+    } finally {
+      setFinishingTraining(false)
+    }
   }
 
   const options = [
@@ -69,6 +110,19 @@ function PatientSelect() {
       {/* Choose an option */}
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center px-4 pb-16">
         <p className="mb-8 text-base tracking-widest text-gray-400">请选择要进行的活动</p>
+        {hasActiveTraining && (
+          <div className="mb-6 flex flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={handleFinishTraining}
+              disabled={finishingTraining}
+              className="rounded-xl border border-[#3B82F6]/30 bg-white px-5 py-2 text-sm font-medium text-[#3B82F6] shadow-sm transition hover:bg-[#EAF4FF] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {finishingTraining ? '正在保存训练记录…' : '结束本次训练并生成摘要'}
+            </button>
+            {trainingMessage && <p className="text-sm text-gray-500">{trainingMessage}</p>}
+          </div>
+        )}
         <div className="flex w-full flex-col gap-8 md:flex-row md:justify-center md:gap-12">
           {options.map((o) => (
             <button

@@ -1,50 +1,28 @@
-/**
- * 生成小星的回复。
- *
- * ⚠️ 真实 LLM 接入点 —— 换掉 getAiReply() 的 mock 即可：
- *
- *   1. 安装 SDK：npm i openai  （或 @anthropic-ai/sdk / deepseek 等）
- *   2. 在 server/.env 加 API Key（如 OPENAI_API_KEY）
- *   3. 用 provider 调用替换 getAiReply() 主体，把 messages
- *      ({role, content}) 映射成该 provider 的消息格式
- *   4. 返回的文本保持 {reply} 结构不变，路由无需改动
- *
- * 流式（SSE）方案：把 getAiReply 改为接收 Express 的 res，
- * 设置 Content-Type: text/event-stream，逐块写入
- * `data: {"delta":"..."}\n\n`，结束写 `event: done\ndata: {}\n\n`。
- * 前端把 requestAIMessage() 换成 fetch 流读取器，逐块追加并喂给
- * speechSynthesis 分句朗读即可。
- */
+import {
+  createDoctorSummaryInput,
+  createPatientInteractionInput,
+  doctorSummaryContentSchema,
+  doctorSummaryOutputSchema,
+  DOCTOR_SUMMARY_OUTPUT_SCHEMA_VERSION,
+  patientInteractionOutputSchema,
+  PATIENT_INTERACTION_OUTPUT_SCHEMA_VERSION,
+} from '../validation/aiSchemas.js'
+import {
+  createPromptMessage,
+  resolveDoctorSummaryPrompt,
+  resolvePatientInteractionPrompt,
+} from './aiPrompts.js'
 
-const MOCK_REPLIES = [
-  '好的，我听到啦！你能再说具体一点吗？',
-  '原来是这样，听起来很有意思呢！',
-  '嗯嗯，我在认真听你说哦。',
-  '谢谢你告诉我这些！你今天感觉怎么样呀？',
-  '真棒！你可以试着多说几句话，我很愿意陪你聊天。',
-]
-
-const DOCTOR_PROMPT_VERSION = 'session-summary-v1'
 const QWEN_CHAT_URL =
   process.env.QWEN_BASE_URL ??
   'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
 
-function mockReply(messages) {
-  const last = [...messages].reverse().find((m) => m.role === 'user')
-  const text = last?.content ?? ''
-  if (/你好|您好|嗨|哈喽/.test(text)) {
-    return '你好呀！我是小星，很高兴见到你！今天想聊点什么呢？'
-  }
-  if (/谢谢|感谢/.test(text)) {
-    return '不客气！能帮到你我很开心！'
-  }
-  return MOCK_REPLIES[Math.floor(Math.random() * MOCK_REPLIES.length)]
+function configuredProvider(scope) {
+  return process.env[`AI_${scope}_PROVIDER`] ?? process.env.AI_PROVIDER ?? 'deterministic'
 }
 
-export async function getAiReply(messages) {
-  // ← 真实的 LLM provider 调用在这里替换 mock
-  await new Promise((resolve) => setTimeout(resolve, 350)) // 模拟网络延迟
-  return mockReply(messages)
+function configuredModel(name, fallback) {
+  return process.env[name] ?? fallback
 }
 
 function formatPercent(value) {
@@ -77,35 +55,42 @@ function createDeterministicDoctorSummary(input) {
   }
 }
 
-function doctorSystemPrompt() {
-  return `你是康复训练记录摘要助手。仅根据给定 JSON 生成医生端阅读摘要。
-要求：准确描述客观游戏表现和可观察交互；不得进行医学诊断、推断未表达的心理状态，或把一次训练推广为长期特征；数据不足时明确说明。只返回 JSON，字段必须为 sessionOverview、gamePerformance、interactionSummary、observedLanguageBehavior、comparisonWithinSession。`
+function deterministicPatientReply({ interaction, user }) {
+  if (interaction.trigger === 'LONG_IDLE') {
+    return { reply: '我们可以慢慢看，不着急。', emotion: 'calm' }
+  }
+  if (interaction.trigger === 'MULTIPLE_WRONG') {
+    return { reply: '没关系，我们可以慢慢来，再试一次。', emotion: 'encouraging' }
+  }
+  if (interaction.trigger === 'USER_QUIT' || /不喜欢|不想|停止|休息/.test(user?.text ?? '')) {
+    return { reply: '好，我知道了。我们可以先停一下。', emotion: 'empathetic' }
+  }
+  if (interaction.trigger === 'GAME_COMPLETE') {
+    return { reply: '你完成啦，刚才很认真。', emotion: 'celebrating' }
+  }
+  if (interaction.trigger === 'GAME_START') {
+    return { reply: '我们慢慢开始，不着急。', emotion: 'encouraging' }
+  }
+  return { reply: '嗯嗯，我在认真听你说哦。', emotion: 'neutral' }
 }
 
-function parseQwenSummary(content) {
+function parseJsonResponse(content) {
   const normalized = String(content ?? '')
     .trim()
     .replace(/^```json\s*/i, '')
     .replace(/\s*```$/, '')
-  const result = JSON.parse(normalized)
-
-  if (
-    !result ||
-    typeof result.sessionOverview !== 'string' ||
-    !Array.isArray(result.gamePerformance) ||
-    typeof result.interactionSummary !== 'string' ||
-    !Array.isArray(result.observedLanguageBehavior) ||
-    typeof result.comparisonWithinSession !== 'string'
-  ) {
-    throw new Error('Qwen summary response does not match the required schema')
-  }
-
-  return result
+  return JSON.parse(normalized)
 }
 
-async function generateQwenDoctorSummary(input) {
+function validateModelOutput(schema, content, name) {
+  const parsed = schema.safeParse(parseJsonResponse(content))
+  if (!parsed.success) throw new Error(`${name} response does not match the required schema`)
+  return parsed.data
+}
+
+async function requestQwenJson({ model, temperature, prompt, input }) {
   if (!process.env.QWEN_API_KEY) {
-    throw new Error('QWEN_API_KEY is required when AI_PROVIDER=qwen')
+    throw new Error('QWEN_API_KEY is required when the Qwen provider is enabled')
   }
 
   const controller = new AbortController()
@@ -119,43 +104,136 @@ async function generateQwenDoctorSummary(input) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: process.env.QWEN_DOCTOR_MODEL ?? 'qwen-plus',
-        temperature: 0.2,
+        model,
+        temperature,
         response_format: { type: 'json_object' },
         messages: [
-          { role: 'system', content: doctorSystemPrompt() },
+          { role: 'system', content: JSON.stringify(createPromptMessage(prompt)) },
           { role: 'user', content: JSON.stringify(input) },
         ],
       }),
       signal: controller.signal,
     })
-    if (!response.ok) {
-      throw new Error(`Qwen summary request failed with HTTP ${response.status}`)
-    }
-
+    if (!response.ok) throw new Error(`Qwen request failed with HTTP ${response.status}`)
     const body = await response.json()
-    return parseQwenSummary(body.choices?.[0]?.message?.content)
+    return body.choices?.[0]?.message?.content
   } finally {
     clearTimeout(timeout)
   }
 }
 
-/**
- * 生成医生摘要，与面向患者的 getAiReply 保持独立。
- * 默认 deterministic 模式用于本地开发和测试；设置 AI_PROVIDER=qwen 才会出网。
- */
-export async function generateDoctorSummary(input) {
-  if (process.env.AI_PROVIDER === 'qwen') {
-    return {
-      provider: 'qwen',
-      promptVersion: DOCTOR_PROMPT_VERSION,
-      result: await generateQwenDoctorSummary(input),
-    }
+function patientOutput(content) {
+  return patientInteractionOutputSchema.parse({
+    schemaVersion: PATIENT_INTERACTION_OUTPUT_SCHEMA_VERSION,
+    ...content,
+  })
+}
+
+function doctorOutput(content) {
+  return doctorSummaryOutputSchema.parse({
+    schemaVersion: DOCTOR_SUMMARY_OUTPUT_SCHEMA_VERSION,
+    ...content,
+  })
+}
+
+async function generateQwenDoctorSummary(input, prompt) {
+  const content = validateModelOutput(
+    doctorSummaryContentSchema,
+    await requestQwenJson({
+      model: configuredModel('QWEN_DOCTOR_MODEL', 'qwen-plus'),
+      temperature: prompt.temperature,
+      prompt,
+      input,
+    }),
+    'Qwen doctor summary',
+  )
+  return doctorOutput(content)
+}
+
+async function generateQwenPatientReply(input, prompt) {
+  const content = validateModelOutput(
+    patientInteractionOutputSchema.omit({ schemaVersion: true }),
+    await requestQwenJson({
+      model: configuredModel('QWEN_CHARACTER_MODEL', 'qwen-plus-character'),
+      temperature: prompt.temperature,
+      prompt,
+      input,
+    }),
+    'Qwen patient interaction',
+  )
+  return patientOutput(content)
+}
+
+function metadata(provider, model, prompt, input) {
+  return {
+    provider,
+    model,
+    prompt: { id: prompt.id, version: prompt.version },
+    inputSchemaVersion: input.schemaVersion,
   }
+}
+
+export function isPatientInteractionProviderLive() {
+  return configuredProvider('INTERACTION') === 'qwen'
+}
+
+// Compatibility adapter for the existing chat page. It accepts the legacy message
+// list but normalizes it into the same structured contract used by session calls.
+export async function getAiChatResponse(messages) {
+  const recentConversation = messages
+    .filter((message) => message.role === 'user' || message.role === 'assistant')
+    .slice(-10)
+  const userText = [...recentConversation]
+    .reverse()
+    .find((message) => message.role === 'user')?.content
+
+  return generatePatientInteractionReply(
+    createPatientInteractionInput({
+      trigger: 'USER_MESSAGE',
+      context: 'CHAT',
+      userText,
+      inputMethod: 'TEXT',
+      recentConversation,
+    }),
+  )
+}
+
+export async function generatePatientInteractionReply(input) {
+  const prompt = resolvePatientInteractionPrompt()
+  const provider = configuredProvider('INTERACTION')
+  const model =
+    provider === 'qwen' ? configuredModel('QWEN_CHARACTER_MODEL', 'qwen-plus-character') : null
+  const output =
+    provider === 'qwen'
+      ? await generateQwenPatientReply(input, prompt)
+      : patientOutput(deterministicPatientReply(input))
 
   return {
-    provider: 'deterministic',
-    promptVersion: DOCTOR_PROMPT_VERSION,
-    result: createDeterministicDoctorSummary(input),
+    ...metadata(provider, model, prompt, input),
+    output,
+    // Compatibility for service callers introduced before the explicit output
+    // envelope. New callers should use `output` and `prompt`.
+    result: output,
+    promptVersion: prompt.version,
+  }
+}
+
+export async function generateDoctorSummary(summary) {
+  const prompt = resolveDoctorSummaryPrompt()
+  const input = createDoctorSummaryInput(summary)
+  const provider = configuredProvider('DOCTOR')
+  const model = provider === 'qwen' ? configuredModel('QWEN_DOCTOR_MODEL', 'qwen-plus') : null
+  const output =
+    provider === 'qwen'
+      ? await generateQwenDoctorSummary(input, prompt)
+      : doctorOutput(createDeterministicDoctorSummary(summary))
+
+  return {
+    ...metadata(provider, model, prompt, input),
+    output,
+    // Existing session-summary consumers use `result`; keep it as the validated
+    // JSON output while new code can use the explicit `output` field.
+    result: output,
+    promptVersion: prompt.version,
   }
 }

@@ -1,11 +1,11 @@
 import express from 'express'
 import cookieParser from 'cookie-parser'
 import helmet from 'helmet'
-import aiRouter from './routes/ai.js'
+import { createAiRouter } from './routes/ai.js'
 import gamesRouter from './routes/games.js'
 import healthRouter from './routes/health.js'
 import { createAuthRouter } from './routes/auth.js'
-import trainingRouter from './routes/training.js'
+import { createTrainingRouter } from './routes/training.js'
 
 function getAllowedOrigins() {
   return (
@@ -58,8 +58,8 @@ export function createApp() {
   app.use('/api/health', healthRouter)
   app.use('/api/auth', createAuthRouter({ allowedOrigins }))
   app.use('/api/games', gamesRouter)
-  app.use('/api/ai', aiRouter)
-  app.use('/api/training', trainingRouter)
+  app.use('/api/ai', createAiRouter({ allowedOrigins }))
+  app.use('/api/training', createTrainingRouter({ allowedOrigins }))
 
   app.use((req, res) => {
     void req

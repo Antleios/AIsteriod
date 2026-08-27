@@ -47,7 +47,7 @@ function AIChat() {
   }, [])
 
   const sendMessage = useCallback(
-    async (raw) => {
+    async (raw, inputMethod = 'TEXT') => {
       const content = (raw ?? '').trim()
       if (!content || handlingRef.current) return
       handlingRef.current = true
@@ -60,7 +60,7 @@ function AIChat() {
       const positive = /喜欢|谢谢|感谢|爱|棒|开心|好呀|好哒|真棒|聪明|爱你|感谢你/.test(content)
 
       try {
-        const { reply } = await requestAIMessage(nextMessages) // 唯一 AI 入口
+        const { reply } = await requestAIMessage(nextMessages, { inputMethod })
         setConversation((prev) => [...prev, { role: 'assistant', content: reply }])
         // 用户的话或 AI 回复里带积极词，都会触发爱心
         const positiveReply = /喜欢|谢谢|感谢|爱|棒|开心|好呀|好哒|真棒|聪明|加油|太棒/.test(reply)
@@ -145,7 +145,7 @@ function AIChat() {
       transcriptRef.current = ''
       setTranscript('')
       if (final && !suppressSendRef.current) {
-        sendMessageRef.current(final) // 说完自动发送
+        sendMessageRef.current(final, 'ASR') // 说完自动发送
       }
     }
 

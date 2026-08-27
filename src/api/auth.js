@@ -4,7 +4,9 @@
 // 前端所有请求必须携带 credentials: 'include'，否则拿不到/发不出会话 Cookie。
 // 后端接口文档见 server/AUTH_API.md。
 
-const BASE = '/api/auth'
+import { getApiUrl } from './client.js'
+
+const BASE = getApiUrl('/api/auth')
 
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {

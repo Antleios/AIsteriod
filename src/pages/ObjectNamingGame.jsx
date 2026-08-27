@@ -4,9 +4,19 @@ import ProgressBar from '../components/ProgressBar.jsx'
 import AIAvatar from '../components/AIAvatar.jsx'
 import RewardPopup from '../components/RewardPopup.jsx'
 import { fetchObjectNamingQuestions } from '../api/games.js'
+import { useTrainingIdleTracker } from '../hooks/useTrainingIdleTracker.js'
+import {
+  finishTrainingSession,
+  recordTrainingAttempt,
+  startTrainingGame,
+} from '../api/training.js'
 import objects from '../data/objects.js'
 
 const DAILY_GOAL = 10
+
+function currentTime() {
+  return Date.now()
+}
 
 // 去掉识别文本里的标点和空白，比如「苹果。」归一成「苹果」再判题
 const cleanAnswer = (text) =>
@@ -33,6 +43,7 @@ function ObjectNamingGame() {
   const [step, setStep] = useState('prompting')
   const [feedbackText, setFeedbackText] = useState('')
   const [showReward, setShowReward] = useState(false)
+  const [gameRunId, setGameRunId] = useState(null)
   const [listening, setListening] = useState(false)
   const [transcript, setTranscript] = useState('')
   const [manualInput, setManualInput] = useState('')
@@ -40,23 +51,56 @@ function ObjectNamingGame() {
   const transcriptRef = useRef('')
   const checkAnswerRef = useRef(null)
   const manualInputRef = useRef('')
+  const questionStartedAtRef = useRef(0)
+  const gameStartPromiseRef = useRef(null)
 
   const current = session[currentIndex]
 
+  useTrainingIdleTracker(gameRunId)
+
   useEffect(() => {
     let cancelled = false
+    const loadFallbackQuestions = () => {
+      fetchObjectNamingQuestions()
+        .then((questions) => {
+          if (cancelled || !questions.length) return
+          setQuestionBank(questions)
+          setSession(shuffle(questions))
+          setCurrentIndex(0)
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setQuestionBank(objects)
+            setSession((currentSession) =>
+              currentSession.length ? currentSession : shuffle(objects),
+            )
+          }
+        })
+    }
 
-    fetchObjectNamingQuestions()
-      .then((questions) => {
-        if (cancelled || questions.length === 0) return
+    if (!gameStartPromiseRef.current) {
+      gameStartPromiseRef.current = startTrainingGame('object-naming')
+    }
+
+    gameStartPromiseRef.current
+      .then((training) => {
+        if (cancelled) return
+        const questions = training?.gameRun.questions.map((question) => ({
+          questionId: question.id,
+          emoji: question.assetValue,
+          hint: question.hint,
+          prompt: question.prompt,
+        }))
+        if (!questions?.length) {
+          loadFallbackQuestions()
+          return
+        }
+        setGameRunId(training.gameRun.id)
         setQuestionBank(questions)
         setSession(shuffle(questions))
         setCurrentIndex(0)
       })
-      .catch(() => {
-        setQuestionBank(objects)
-        setSession((currentSession) => (currentSession.length ? currentSession : shuffle(objects)))
-      })
+      .catch(loadFallbackQuestions)
 
     return () => {
       cancelled = true
@@ -88,23 +132,44 @@ function ObjectNamingGame() {
   }, [])
 
   const checkAnswer = useCallback(
-    (answer) => {
+    async (answer) => {
       stopListening()
       const cleaned = cleanAnswer(answer)
       if (!cleaned) return // 识别到的全是标点，忽略，不判题
-      const correct = current.name
-      const isCorrect = cleaned.includes(correct) || correct.includes(cleaned)
+      let isCorrect
+      if (current.questionId) {
+        try {
+          const attempt = await recordTrainingAttempt({
+            questionId: current.questionId,
+            answer: cleaned,
+            responseTimeMs: currentTime() - questionStartedAtRef.current,
+          })
+          isCorrect = attempt?.isCorrect
+        } catch {
+          setStep('feedback_incorrect')
+          setFeedbackText('训练记录暂不可用，请再试一次。')
+          return
+        }
+      } else {
+        const correct = current.name
+        isCorrect = cleaned.includes(correct) || correct.includes(cleaned)
+      }
 
       if (isCorrect) {
         setStep('feedback_correct')
-        setFeedbackText(`答对了！这就是${correct}！太棒了！🎉`)
-        speak(`答对了！这就是${correct}！太棒了！`)
+        const answerName = current.name ? `这就是${current.name}！` : ''
+        setFeedbackText(`答对了！${answerName}太棒了！🎉`)
+        speak(`答对了！${answerName}太棒了！`)
         setScore((s) => s + 1)
         setShowReward(true)
         setTodayCompleted((n) => n + 1)
       } else {
         setStep('feedback_incorrect')
-        setFeedbackText(`唔，你说的好像是"${cleaned}"，再仔细看看？🤔`)
+        setFeedbackText(
+          current.name
+            ? `唔，你说的好像是"${cleaned}"，再仔细看看？🤔`
+            : '再仔细看看图片，想一想这是什么？🤔',
+        )
         speak('再仔细看看图片，想一想这是什么？')
       }
     },
@@ -189,6 +254,7 @@ function ObjectNamingGame() {
 
   useEffect(() => {
     if (!current) return
+    questionStartedAtRef.current = currentTime()
     // 延迟一帧执行，避免在 effect 里同步 setState（react-hooks/set-state-in-effect）
     const timer = setTimeout(() => {
       promptAndListen('请说出图片上的物品名称')
@@ -223,6 +289,39 @@ function ObjectNamingGame() {
     checkAnswer(manualInput.trim())
   }
 
+  const leaveTraining = async (reason, target = '/') => {
+    stopListening()
+    try {
+      await finishTrainingSession({ reason })
+    } finally {
+      navigate(target)
+    }
+  }
+
+  const revealAnswer = async () => {
+    if (current.questionId) {
+      setStep('submitting')
+      try {
+        const attempt = await recordTrainingAttempt({
+          questionId: current.questionId,
+          action: 'REVEAL',
+          responseTimeMs: currentTime() - questionStartedAtRef.current,
+        })
+        if (!attempt?.isRevealed) throw new Error('REVEAL_NOT_RECORDED')
+      } catch {
+        setStep('feedback_incorrect')
+        setFeedbackText('训练记录暂不可用，请稍后再试。')
+        return
+      }
+    }
+
+    setStep('feedback_correct')
+    const answerName = current.name ? `${current.name}哦！` : '这个物品哦！'
+    setFeedbackText(`这是${answerName}${current.emoji}`)
+    speak(`这是${answerName}`)
+    setTodayCompleted((n) => n + 1)
+  }
+
   if (!current) return null
 
   const isAllDone = todayCompleted >= DAILY_GOAL
@@ -232,7 +331,7 @@ function ObjectNamingGame() {
       {/* Top Bar */}
       <div className="flex items-center justify-between px-6 py-4">
         <button
-          onClick={() => navigate('/patient/games')}
+          onClick={() => leaveTraining('LEAVE_OBJECT_NAMING', '/patient/games')}
           className="flex items-center gap-1 text-sm text-gray-400 transition-colors hover:text-[#3B82F6]"
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -266,7 +365,7 @@ function ObjectNamingGame() {
               今天认识了 {DAILY_GOAL} 个物品，继续加油！
             </p>
             <button
-              onClick={() => navigate('/')}
+              onClick={() => leaveTraining('GAME_COMPLETE')}
               className="rounded-2xl bg-[#3B82F6] px-8 py-3 font-medium text-white shadow-lg transition-all hover:bg-[#2563EB] hover:shadow-xl"
             >
               返回首页
@@ -356,13 +455,7 @@ function ObjectNamingGame() {
                         再试一次
                       </button>
                       <button
-                        onClick={() => {
-                          setStep('feedback_correct')
-                          setFeedbackText(`这是${current.name}哦！${current.emoji}`)
-                          speak(`这是${current.name}`)
-                          setScore((s) => s + 1)
-                          setShowReward(true)
-                        }}
+                        onClick={revealAnswer}
                         className="rounded-xl bg-[#3B82F6] px-5 py-2 text-sm text-white transition-all hover:bg-[#2563EB]"
                       >
                         显示答案

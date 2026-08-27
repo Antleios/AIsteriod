@@ -81,6 +81,21 @@ function assertActiveSession(session) {
   }
 }
 
+async function claimActiveSession(tx, userId, sessionId) {
+  const claimed = await tx.trainingSession.updateMany({
+    where: { id: sessionId, userId, status: ACTIVE_SESSION },
+    data: { updatedAt: new Date() },
+  })
+
+  if (claimed.count) return
+
+  const session = await tx.trainingSession.findFirst({
+    where: { id: sessionId, userId },
+    select: { id: true, status: true },
+  })
+  assertActiveSession(session)
+}
+
 function serializeQuestion(question) {
   return {
     id: question.id,
@@ -302,7 +317,8 @@ function computeGameMetrics(gameRuns, events) {
       totalAttempts: attempts.length,
       correctCount,
       wrongCount,
-      accuracy: attempts.length ? round(correctCount / attempts.length) : null,
+      revealedCount: attempts.filter((attempt) => attempt.outcome === 'REVEALED').length,
+      accuracy: correctCount + wrongCount ? round(correctCount / (correctCount + wrongCount)) : null,
       averageResponseTimeMs: responseTimes.length
         ? round(responseTimes.reduce((sum, value) => sum + value, 0) / responseTimes.length)
         : null,
@@ -424,17 +440,21 @@ export async function createGameRun(user, sessionId, { gameCode }) {
   }
 
   const run = await prisma.$transaction(async (tx) => {
-    const updated = await tx.trainingSession.update({
+    await claimActiveSession(tx, user.id, sessionId)
+    const session = await tx.trainingSession.findUniqueOrThrow({
+      where: { id: sessionId },
+      select: { nextGameRunSequence: true },
+    })
+    await tx.trainingSession.update({
       where: { id: sessionId },
       data: { nextGameRunSequence: { increment: 1 } },
-      select: { nextGameRunSequence: true },
     })
 
     return tx.gameRun.create({
       data: {
         sessionId,
         gameCode,
-        sequence: updated.nextGameRunSequence - 1,
+        sequence: session.nextGameRunSequence,
         configSnapshotJson,
         questions: { create: questionData },
       },
@@ -447,35 +467,40 @@ export async function createGameRun(user, sessionId, { gameCode }) {
 
 export async function recordGameAttempt(user, sessionId, questionId, input) {
   assertPatient(user)
-  const question = await prisma.gameRunQuestion.findFirst({
-    where: { id: questionId, gameRun: { sessionId, session: { userId: user.id } } },
-    include: { gameRun: { include: { session: true } } },
-  })
-
-  if (!question) {
-    throw new TrainingError(404, 'QUESTION_NOT_FOUND', '训练题目不存在')
-  }
-  assertActiveSession(question.gameRun.session)
-  if (question.gameRun.status !== ACTIVE_RUN) {
-    throw new TrainingError(409, 'GAME_RUN_NOT_ACTIVE', '本轮游戏已经结束')
-  }
-  if (question.completedAt) {
-    throw new TrainingError(409, 'QUESTION_ALREADY_COMPLETED', '该题已经完成')
-  }
-
-  const isCorrect = isCorrectAnswer(question, input.answer)
   const now = new Date()
-  const attempt = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
+    await claimActiveSession(tx, user.id, sessionId)
+    const question = await tx.gameRunQuestion.findFirst({
+      where: { id: questionId, gameRun: { sessionId } },
+      include: { gameRun: true },
+    })
+
+    if (!question) {
+      throw new TrainingError(404, 'QUESTION_NOT_FOUND', '训练题目不存在')
+    }
+    if (question.gameRun.status !== ACTIVE_RUN) {
+      throw new TrainingError(409, 'GAME_RUN_NOT_ACTIVE', '本轮游戏已经结束')
+    }
+    if (question.completedAt) {
+      throw new TrainingError(409, 'QUESTION_ALREADY_COMPLETED', '该题已经完成')
+    }
+
+    const isRevealed = input.action === 'REVEAL'
+    if (isRevealed && question.questionType !== 'OBJECT_NAMING') {
+      throw new TrainingError(400, 'REVEAL_NOT_SUPPORTED', '当前题型不支持显示答案')
+    }
+
+    const isCorrect = !isRevealed && isCorrectAnswer(question, input.answer)
     const created = await tx.gameAttempt.create({
       data: {
         gameRunQuestionId: question.id,
         answerJson: json({ value: input.answer ?? null }),
-        outcome: isCorrect ? 'CORRECT' : 'WRONG',
+        outcome: isRevealed ? 'REVEALED' : isCorrect ? 'CORRECT' : 'WRONG',
         responseTimeMs: input.responseTimeMs,
       },
     })
 
-    if (isCorrect) {
+    if (isCorrect || isRevealed) {
       await tx.gameRunQuestion.update({
         where: { id: question.id },
         data: { completedAt: now },
@@ -491,75 +516,94 @@ export async function recordGameAttempt(user, sessionId, questionId, input) {
       }
     }
 
-    return created
-  })
+    if (!isCorrect && !isRevealed) {
+      const wrongAttempts = await tx.gameAttempt.count({
+        where: { gameRunQuestionId: question.id, outcome: 'WRONG' },
+      })
+      if (wrongAttempts === 2) {
+        await tx.interactionEvent.create({
+          data: {
+            sessionId,
+            gameRunId: question.gameRunId,
+            clientEventId: `server-multiple-wrong:${question.id}`,
+            type: 'MULTIPLE_WRONG',
+            occurredAt: now,
+            dataJson: json({ questionId: question.id, wrongAttempts }),
+          },
+        })
+      }
+    }
 
-  const run = await prisma.gameRun.findUniqueOrThrow({
-    where: { id: question.gameRunId },
-    select: { status: true, endedAt: true },
+    const run = await tx.gameRun.findUniqueOrThrow({
+      where: { id: question.gameRunId },
+      select: { status: true, endedAt: true },
+    })
+    return { attempt: created, question, run, isCorrect, isRevealed }
   })
 
   return {
-    id: attempt.id,
+    id: result.attempt.id,
     questionId,
-    outcome: attempt.outcome,
-    isCorrect,
-    responseTimeMs: attempt.responseTimeMs,
-    gameRun: { id: question.gameRunId, status: run.status, endedAt: run.endedAt },
-    feedback: isCorrect ? '对啦，我们继续。' : '没关系，再看看。',
+    outcome: result.attempt.outcome,
+    isCorrect: result.isCorrect,
+    isRevealed: result.isRevealed,
+    responseTimeMs: result.attempt.responseTimeMs,
+    gameRun: {
+      id: result.question.gameRunId,
+      status: result.run.status,
+      endedAt: result.run.endedAt,
+    },
+    feedback: result.isCorrect ? '对啦，我们继续。' : '没关系，再看看。',
   }
 }
 
 export async function recordInteractionEvents(user, sessionId, { events }) {
   assertPatient(user)
-  const session = await getOwnedSession(user.id, sessionId)
-  assertActiveSession(session)
-  const runIds = [...new Set(events.map((event) => event.gameRunId).filter(Boolean))]
+  return prisma.$transaction(async (tx) => {
+    await claimActiveSession(tx, user.id, sessionId)
+    const runIds = [...new Set(events.map((event) => event.gameRunId).filter(Boolean))]
 
-  if (runIds.length) {
-    const matchedRuns = await prisma.gameRun.count({
-      where: { id: { in: runIds }, sessionId },
-    })
-    if (matchedRuns !== runIds.length) {
-      throw new TrainingError(400, 'INVALID_GAME_RUN', '事件包含不属于该会话的游戏轮次')
+    if (runIds.length) {
+      const matchedRuns = await tx.gameRun.count({
+        where: { id: { in: runIds }, sessionId },
+      })
+      if (matchedRuns !== runIds.length) {
+        throw new TrainingError(400, 'INVALID_GAME_RUN', '事件包含不属于该会话的游戏轮次')
+      }
     }
-  }
 
-  const existing = await prisma.interactionEvent.findMany({
-    where: { sessionId, clientEventId: { in: events.map((event) => event.clientEventId) } },
-    select: { clientEventId: true },
-  })
-  const existingIds = new Set(existing.map((event) => event.clientEventId))
-  const acceptedIds = new Set(existingIds)
-  const uniqueEvents = events.filter((event) => {
-    if (acceptedIds.has(event.clientEventId)) return false
-    acceptedIds.add(event.clientEventId)
-    return true
-  })
-
-  if (uniqueEvents.length) {
-    await prisma.interactionEvent.createMany({
-      data: uniqueEvents.map((event) => ({
-        sessionId,
-        gameRunId: event.gameRunId,
-        clientEventId: event.clientEventId,
-        type: event.type,
-        occurredAt: event.occurredAt ?? new Date(),
-        dataJson: json(event.data),
-      })),
+    const existing = await tx.interactionEvent.findMany({
+      where: { sessionId, clientEventId: { in: events.map((event) => event.clientEventId) } },
+      select: { clientEventId: true },
     })
-  }
+    const acceptedIds = new Set(existing.map((event) => event.clientEventId))
+    const uniqueEvents = events.filter((event) => {
+      if (acceptedIds.has(event.clientEventId)) return false
+      acceptedIds.add(event.clientEventId)
+      return true
+    })
 
-  return { accepted: uniqueEvents.length, duplicate: events.length - uniqueEvents.length }
+    if (uniqueEvents.length) {
+      await tx.interactionEvent.createMany({
+        data: uniqueEvents.map((event) => ({
+          sessionId,
+          gameRunId: event.gameRunId,
+          clientEventId: event.clientEventId,
+          type: event.type,
+          occurredAt: event.occurredAt ?? new Date(),
+          dataJson: json(event.data),
+        })),
+      })
+    }
+
+    return { accepted: uniqueEvents.length, duplicate: events.length - uniqueEvents.length }
+  })
 }
 
 export async function recordConversationTurn(user, sessionId, input) {
   assertPatient(user)
   const turn = await prisma.$transaction(async (tx) => {
-    const session = await tx.trainingSession.findFirst({
-      where: { id: sessionId, userId: user.id },
-    })
-    assertActiveSession(session)
+    await claimActiveSession(tx, user.id, sessionId)
     const updated = await tx.trainingSession.update({
       where: { id: sessionId },
       data: { nextConversationSequence: { increment: 1 } },
@@ -586,46 +630,65 @@ export async function recordConversationTurn(user, sessionId, input) {
 
 export async function finalizeTrainingSession(user, sessionId) {
   assertPatient(user)
-  const existing = await getOwnedSession(user.id, sessionId)
+  const existing = await getOwnedSession(user.id, sessionId, { summary: true })
   if (!existing) {
     throw new TrainingError(404, 'SESSION_NOT_FOUND', '训练会话不存在')
   }
-  if (existing.status === 'COMPLETED') return getTrainingSession(user, sessionId)
-  if (existing.status !== ACTIVE_SESSION) {
+  const canRetrySummary = existing.status === 'COMPLETED' && existing.summary?.status === 'FAILED'
+  if (existing.status === 'COMPLETED' && !canRetrySummary) {
+    return getTrainingSession(user, sessionId)
+  }
+  if (existing.status !== ACTIVE_SESSION && !canRetrySummary) {
     throw new TrainingError(409, 'SESSION_FINALIZATION_IN_PROGRESS', '训练会话正在结束')
   }
 
-  await prisma.$transaction([
-    prisma.trainingSession.update({
-      where: { id: sessionId },
-      data: { status: 'FINALIZING', endedAt: new Date() },
-    }),
-    prisma.sessionSummary.upsert({
-      where: { sessionId },
-      update: { status: 'PENDING', errorMessage: null },
-      create: { sessionId, status: 'PENDING' },
-    }),
-  ])
-
-  const finalizingSession = await loadSessionDetail(user.id, sessionId)
-  const summaryInput = buildSummaryInput(finalizingSession)
-  const metrics = {
-    games: summaryInput.games,
-    conversation: summaryInput.conversationMetrics,
-  }
-
-  await prisma.$transaction([
-    prisma.trainingSession.update({
-      where: { id: sessionId },
-      data: { metricsJson: json(metrics) },
-    }),
-    prisma.sessionSummary.update({
-      where: { sessionId },
-      data: { inputJson: json(summaryInput) },
-    }),
-  ])
-
   try {
+    const endedAt = existing.endedAt ?? new Date()
+    const claimed = await prisma.$transaction(async (tx) => {
+      const update = await tx.trainingSession.updateMany({
+        where: { id: sessionId, userId: user.id, status: existing.status },
+        data: { status: 'FINALIZING', endedAt },
+      })
+      if (!update.count) return false
+
+      await tx.gameRun.updateMany({
+        where: { sessionId, status: ACTIVE_RUN },
+        data: { status: 'ABANDONED', endedAt },
+      })
+      await tx.sessionSummary.upsert({
+        where: { sessionId },
+        update: { status: 'PENDING', errorMessage: null },
+        create: { sessionId, status: 'PENDING' },
+      })
+      return true
+    })
+
+    if (!claimed) {
+      const latest = await getOwnedSession(user.id, sessionId, { summary: true })
+      if (latest?.status === 'COMPLETED' && latest.summary?.status !== 'FAILED') {
+        return getTrainingSession(user, sessionId)
+      }
+      throw new TrainingError(409, 'SESSION_FINALIZATION_IN_PROGRESS', '训练会话正在结束')
+    }
+
+    const finalizingSession = await loadSessionDetail(user.id, sessionId)
+    const summaryInput = buildSummaryInput(finalizingSession)
+    const metrics = {
+      games: summaryInput.games,
+      conversation: summaryInput.conversationMetrics,
+    }
+
+    await prisma.$transaction([
+      prisma.trainingSession.update({
+        where: { id: sessionId },
+        data: { metricsJson: json(metrics) },
+      }),
+      prisma.sessionSummary.update({
+        where: { sessionId },
+        data: { inputJson: json(summaryInput) },
+      }),
+    ])
+
     const generated = await generateDoctorSummary(summaryInput)
     await prisma.$transaction([
       prisma.sessionSummary.update({
@@ -645,19 +708,27 @@ export async function finalizeTrainingSession(user, sessionId) {
       }),
     ])
   } catch (error) {
-    await prisma.$transaction([
-      prisma.sessionSummary.update({
+    if (error instanceof TrainingError && error.code === 'SESSION_FINALIZATION_IN_PROGRESS') {
+      throw error
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.sessionSummary.upsert({
         where: { sessionId },
-        data: {
+        update: {
           status: 'FAILED',
           errorMessage: '医生摘要生成失败，请稍后重试',
         },
-      }),
-      prisma.trainingSession.update({
-        where: { id: sessionId },
+        create: {
+          sessionId,
+          status: 'FAILED',
+          errorMessage: '医生摘要生成失败，请稍后重试',
+        },
+      })
+      await tx.trainingSession.updateMany({
+        where: { id: sessionId, userId: user.id, status: 'FINALIZING' },
         data: { status: 'COMPLETED' },
-      }),
-    ])
+      })
+    })
     throw error
   }
 

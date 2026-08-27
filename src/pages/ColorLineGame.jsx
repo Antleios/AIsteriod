@@ -4,10 +4,20 @@ import ProgressBar from '../components/ProgressBar.jsx'
 import AIAvatar from '../components/AIAvatar.jsx'
 import RewardPopup from '../components/RewardPopup.jsx'
 import { fetchColorLineRoundConfig } from '../api/games.js'
+import { useTrainingIdleTracker } from '../hooks/useTrainingIdleTracker.js'
+import {
+  finishTrainingSession,
+  recordTrainingAttempt,
+  startTrainingGame,
+} from '../api/training.js'
 import { generateColorRound, colorPalette } from '../data/colorItems.js'
 
 const DEFAULT_DAILY_GOAL = 5
 const DEFAULT_TOTAL_PAIRS = 5
+
+function currentTime() {
+  return Date.now()
+}
 
 function ColorLineGame() {
   const navigate = useNavigate()
@@ -27,7 +37,13 @@ function ColorLineGame() {
   const [step, setStep] = useState('prompting')
   const [feedbackText, setFeedbackText] = useState('')
   const [showReward, setShowReward] = useState(false)
+  const [gameRunId, setGameRunId] = useState(null)
   const [roundKey, setRoundKey] = useState(0)
+  const questionIdsByColorRef = useRef(new Map())
+  const pairStartedAtRef = useRef(new Map())
+  const gameStartPromiseRef = useRef(null)
+
+  useTrainingIdleTracker(gameRunId)
 
   /* ── ref for current matched IDs (always up-to-date inside closures) ── */
   const matchedIdsRef = useRef(new Set())
@@ -46,26 +62,61 @@ function ColorLineGame() {
   useEffect(() => {
     let cancelled = false
 
-    fetchColorLineRoundConfig()
-      .then((config) => {
+    const loadFallbackRound = () => {
+      fetchColorLineRoundConfig()
+        .then((config) => {
+          if (cancelled) return
+          const palette = config.palette.length ? config.palette : colorPalette
+          setRoundConfig({
+            dailyGoal: config.dailyGoal,
+            totalPairs: config.totalPairs,
+            palette,
+          })
+          setItems(generateColorRound(palette))
+          setMatches([])
+          setRoundKey((key) => key + 1)
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setRoundConfig({
+              dailyGoal: DEFAULT_DAILY_GOAL,
+              totalPairs: DEFAULT_TOTAL_PAIRS,
+              palette: colorPalette,
+            })
+          }
+        })
+    }
+
+    if (!gameStartPromiseRef.current) {
+      gameStartPromiseRef.current = startTrainingGame('color-line')
+    }
+
+    gameStartPromiseRef.current
+      .then((training) => {
         if (cancelled) return
-        const palette = config.palette.length ? config.palette : colorPalette
+        const questions = training?.gameRun.questions ?? []
+        if (!questions.length) {
+          loadFallbackRound()
+          return
+        }
+        setGameRunId(training.gameRun.id)
+        const palette = questions.map((question) => ({
+          color: question.color,
+          name: question.label,
+        }))
+        questionIdsByColorRef.current = new Map(
+          questions.map((question) => [question.color, question.id]),
+        )
         setRoundConfig({
-          dailyGoal: config.dailyGoal,
-          totalPairs: config.totalPairs,
+          dailyGoal: training.gameRun.config?.totalPairs ?? questions.length,
+          totalPairs: training.gameRun.config?.totalPairs ?? questions.length,
           palette,
         })
         setItems(generateColorRound(palette))
         setMatches([])
         setRoundKey((key) => key + 1)
       })
-      .catch(() => {
-        setRoundConfig({
-          dailyGoal: DEFAULT_DAILY_GOAL,
-          totalPairs: DEFAULT_TOTAL_PAIRS,
-          palette: colorPalette,
-        })
-      })
+      .catch(loadFallbackRound)
 
     return () => {
       cancelled = true
@@ -109,7 +160,7 @@ function ColorLineGame() {
       setDropTargetId((prev) => (prev !== id ? id : prev))
     }
 
-    const onUp = (e) => {
+    const onUp = async (e) => {
       const fromId = dragFromIdRef.current
       setDragging(false)
       setDragFromId(null)
@@ -134,7 +185,26 @@ function ColorLineGame() {
       // prevent re-matching already-paired items
       if (matchedIdsRef.current.has(from.id) || matchedIdsRef.current.has(target.id)) return
 
-      if (from.color === target.color) {
+      let isCorrect = from.color === target.color
+      const questionId = questionIdsByColorRef.current.get(from.color)
+      if (questionId) {
+        setStep('submitting')
+        try {
+          const attempt = await recordTrainingAttempt({
+            questionId,
+            answer: target.color,
+            responseTimeMs:
+              currentTime() - (pairStartedAtRef.current.get(from.id) ?? currentTime()),
+          })
+          isCorrect = attempt?.isCorrect ?? false
+        } catch {
+          setStep('playing')
+          setFeedbackText('训练记录暂不可用，请重新连线。')
+          return
+        }
+      }
+
+      if (isCorrect) {
         // ✅ Correct
         setMatches((prev) => {
           const next = [...prev, { id1: from.id, id2: target.id, color: from.color }]
@@ -178,6 +248,7 @@ function ColorLineGame() {
     setDragFromId(item.id)
     dragFromIdRef.current = item.id
     dragStartPosRef.current = { x: e.clientX, y: e.clientY }
+    pairStartedAtRef.current.set(item.id, currentTime())
     setDragPos({ x: e.clientX - r.left, y: e.clientY - r.top })
     speak(`选中了${item.label}`)
   }
@@ -197,14 +268,15 @@ function ColorLineGame() {
     }
   }, [matches.length, roundConfig.totalPairs, step])
 
-  const nextRound = () => {
-    setItems(generateColorRound(roundConfig.palette))
-    setMatches([])
-    setStep('prompting')
-    setRoundKey((k) => k + 1)
-  }
-
   const isAllDone = todayCompleted >= roundConfig.dailyGoal
+
+  const leaveTraining = async (reason, target = '/') => {
+    try {
+      await finishTrainingSession({ reason })
+    } finally {
+      navigate(target)
+    }
+  }
 
   /* ── SVG line: get item center in SVG coords ── */
   const getSvgCenter = (itemId) => {
@@ -220,7 +292,7 @@ function ColorLineGame() {
     <div className="relative min-h-screen bg-gradient-to-br from-[#EAF4FF] via-white to-[#EAF4FF]/60">
       {/* Top Bar */}
       <div className="flex items-center justify-between px-6 py-4">
-        <button onClick={() => navigate('/patient/games')}
+        <button onClick={() => leaveTraining('LEAVE_COLOR_LINE', '/patient/games')}
           className="flex items-center gap-1 text-sm text-gray-400 transition-colors hover:text-[#3B82F6]"
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -245,7 +317,7 @@ function ColorLineGame() {
             <div className="text-8xl">🎉</div>
             <h2 className="text-3xl font-bold text-[#3B82F6]">今日全部完成！</h2>
             <p className="text-gray-500">今天完成了 {roundConfig.dailyGoal} 对颜色配对！</p>
-            <button onClick={() => navigate('/')}
+            <button onClick={() => leaveTraining('GAME_COMPLETE')}
               className="rounded-2xl bg-[#3B82F6] px-8 py-3 font-medium text-white shadow-lg transition-all hover:bg-[#2563EB]"
             >返回首页</button>
           </div>
@@ -254,9 +326,9 @@ function ColorLineGame() {
             <div className="text-8xl">🎉</div>
             <h2 className="text-3xl font-bold text-[#3B82F6]">全部配对成功！</h2>
             <p className="text-gray-500">你成功匹配了所有 {roundConfig.totalPairs} 对！</p>
-            <button onClick={nextRound}
+            <button onClick={() => leaveTraining('GAME_COMPLETE')}
               className="rounded-2xl bg-[#3B82F6] px-8 py-3 font-medium text-white shadow-lg transition-all hover:bg-[#2563EB]"
-            >下一轮</button>
+            >结束训练</button>
           </div>
         ) : (
           <>

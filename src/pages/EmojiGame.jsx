@@ -1,12 +1,22 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ProgressBar from '../components/ProgressBar.jsx'
 import AIAvatar from '../components/AIAvatar.jsx'
 import RewardPopup from '../components/RewardPopup.jsx'
 import { fetchEmojiMatchQuestions } from '../api/games.js'
+import { useTrainingIdleTracker } from '../hooks/useTrainingIdleTracker.js'
+import {
+  finishTrainingSession,
+  recordTrainingAttempt,
+  startTrainingGame,
+} from '../api/training.js'
 import emotionSets from '../data/emotionEmojis.js'
 
 const DAILY_GOAL = 8
+
+function currentTime() {
+  return Date.now()
+}
 
 function shuffle(arr) {
   const a = [...arr]
@@ -28,8 +38,13 @@ function EmojiGame() {
   const [selectedId, setSelectedId] = useState(null)
   const [feedbackText, setFeedbackText] = useState('')
   const [showReward, setShowReward] = useState(false)
+  const [gameRunId, setGameRunId] = useState(null)
+  const questionStartedAtRef = useRef(0)
+  const gameStartPromiseRef = useRef(null)
 
   const current = rounds[roundIndex]
+
+  useTrainingIdleTracker(gameRunId)
 
   useEffect(() => {
     let cancelled = false
@@ -39,21 +54,43 @@ function EmojiGame() {
       setRoundIndex(0)
     }
 
-    fetchEmojiMatchQuestions()
-      .then((questions) => {
+    if (!gameStartPromiseRef.current) {
+      gameStartPromiseRef.current = startTrainingGame('emoji-match')
+    }
+
+    gameStartPromiseRef.current
+      .then((training) => {
         if (cancelled) return
-        if (questions.length === 0) {
+        const questions = training?.gameRun.questions.map((question) => ({
+          questionId: question.id,
+          target: question.prompt,
+          options: question.options.map((option) => ({
+            id: option.id,
+            emoji: option.displayValue,
+            name: option.label,
+          })),
+        }))
+        if (!questions?.length) {
           fallbackToLocalQuestions()
           return
         }
+        setGameRunId(training.gameRun.id)
         setQuestionBank(questions)
         setRounds(shuffle(questions))
         setRoundIndex(0)
       })
-      .catch(() => {
-        if (cancelled) return
-        fallbackToLocalQuestions()
-      })
+      .catch(() =>
+        fetchEmojiMatchQuestions()
+          .then((questions) => {
+            if (cancelled || !questions.length) return fallbackToLocalQuestions()
+            setQuestionBank(questions)
+            setRounds(shuffle(questions))
+            setRoundIndex(0)
+          })
+          .catch(() => {
+            if (!cancelled) fallbackToLocalQuestions()
+          }),
+      )
 
     return () => {
       cancelled = true
@@ -81,6 +118,7 @@ function EmojiGame() {
     setStep('prompting')
     setSelectedId(null)
     setFeedbackText('')
+    questionStartedAtRef.current = currentTime()
     const msg = `请选出表示"${current.target}"的表情`
     speak(msg)
     const timer = setTimeout(() => {
@@ -90,11 +128,32 @@ function EmojiGame() {
   }, [current, speak])
 
   const handleSelect = useCallback(
-    (opt, index) => {
+    async (opt, index) => {
       if (step !== 'waiting') return
       setSelectedId(index)
 
-      if (opt.correct) {
+      setStep('submitting')
+      let attempt = null
+      try {
+        if (current.questionId) {
+          attempt = await recordTrainingAttempt({
+            questionId: current.questionId,
+            answer: opt.id,
+            responseTimeMs: currentTime() - questionStartedAtRef.current,
+          })
+        }
+      } catch {
+        // A server failure must not prevent the existing offline question bank.
+      }
+
+      if (current.questionId && !attempt) {
+        setStep('waiting')
+        setSelectedId(null)
+        setFeedbackText('训练记录暂不可用，请再试一次。')
+        return
+      }
+
+      if (attempt?.isCorrect ?? opt.correct) {
         setStep('correct')
         setFeedbackText(`答对了！${opt.emoji} 就是${current.target}！太棒了！🎉`)
         speak(`答对了！${opt.emoji} 就是${current.target}！太棒了！`)
@@ -130,6 +189,14 @@ function EmojiGame() {
 
   const isAllDone = todayCompleted >= DAILY_GOAL
 
+  const leaveTraining = async (reason, target = '/') => {
+    try {
+      await finishTrainingSession({ reason })
+    } finally {
+      navigate(target)
+    }
+  }
+
   if (!current) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#EAF4FF] via-white to-[#EAF4FF]/60 text-[#3B82F6]">
@@ -143,7 +210,7 @@ function EmojiGame() {
       {/* Top Bar */}
       <div className="flex items-center justify-between px-6 py-4">
         <button
-          onClick={() => navigate('/patient/games')}
+          onClick={() => leaveTraining('LEAVE_EMOJI_MATCH', '/patient/games')}
           className="flex items-center gap-1 text-sm text-gray-400 transition-colors hover:text-[#3B82F6]"
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -177,7 +244,7 @@ function EmojiGame() {
               今天认识了 {DAILY_GOAL} 种情绪表情，继续加油！
             </p>
             <button
-              onClick={() => navigate('/')}
+              onClick={() => leaveTraining('GAME_COMPLETE')}
               className="rounded-2xl bg-[#3B82F6] px-8 py-3 font-medium text-white shadow-lg transition-all hover:bg-[#2563EB] hover:shadow-xl"
             >
               返回首页

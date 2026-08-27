@@ -12,6 +12,7 @@ const EVENT_TYPES = [
   'LEVEL_COMPLETE',
   'GAME_COMPLETE',
   'USER_QUIT',
+  'QUESTION_REVEALED',
 ]
 
 const jsonRecordSchema = z.record(z.string(), z.unknown())
@@ -31,6 +32,7 @@ export const createGameRunSchema = z
 export const recordAttemptSchema = z
   .object({
     answer: z.string().trim().max(200).nullable().optional(),
+    action: z.enum(['ANSWER', 'REVEAL']).default('ANSWER'),
     responseTimeMs: z.number().int().min(0).max(3_600_000).optional(),
   })
   .strict()
@@ -49,7 +51,16 @@ export const recordEventsSchema = z
               .regex(/^[a-zA-Z0-9._:-]+$/, '事件 ID 格式无效'),
             type: z.enum(EVENT_TYPES),
             gameRunId: z.string().cuid().optional(),
-            occurredAt: z.coerce.date().optional(),
+            occurredAt: z
+              .coerce
+              .date()
+              .refine(
+                (value) =>
+                  value.getTime() >= Date.now() - 31 * 24 * 60 * 60 * 1_000 &&
+                  value.getTime() <= Date.now() + 5 * 60 * 1_000,
+                '事件时间必须在最近 31 天内，且不能早于服务器时间 5 分钟以上',
+              )
+              .optional(),
             data: jsonRecordSchema.optional(),
           })
           .strict(),
