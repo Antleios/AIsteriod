@@ -12,6 +12,10 @@ const interactionTriggers = [
 const contexts = ['CHAT', 'OBJECT_NAMING', 'EMOJI_MATCH', 'COLOR_LINE']
 export const PATIENT_INTERACTION_INPUT_SCHEMA_VERSION = 'patient-interaction-input.v1'
 export const PATIENT_INTERACTION_OUTPUT_SCHEMA_VERSION = 'patient-interaction-output.v1'
+export const SESSION_CONVERSATION_MEMORY_INPUT_SCHEMA_VERSION =
+  'session-conversation-memory-input.v1'
+export const SESSION_CONVERSATION_MEMORY_OUTPUT_SCHEMA_VERSION =
+  'session-conversation-memory-output.v1'
 export const DOCTOR_SUMMARY_INPUT_SCHEMA_VERSION = 'doctor-summary-input.v1'
 export const DOCTOR_SUMMARY_OUTPUT_SCHEMA_VERSION = 'doctor-summary-output.v1'
 export const PATIENT_EMOTIONS = [
@@ -63,7 +67,7 @@ export const sessionInteractionSchema = z
 
 const patientReplyContentSchema = z
   .object({
-    reply: z.string().trim().min(1).max(240),
+    reply: z.string().trim().min(1).max(1_000),
     emotion: z.enum(PATIENT_EMOTIONS),
   })
   .strict()
@@ -71,6 +75,20 @@ const patientReplyContentSchema = z
 export const patientInteractionOutputSchema = patientReplyContentSchema.extend({
   schemaVersion: z.literal(PATIENT_INTERACTION_OUTPUT_SCHEMA_VERSION),
 })
+
+const sessionConversationMemoryContentSchema = z
+  .object({
+    summary: z.string().trim().min(1).max(1_000),
+    continuityNotes: z.array(z.string().trim().min(1).max(240)).max(6),
+  })
+  .strict()
+
+export const sessionConversationMemoryOutputSchema =
+  sessionConversationMemoryContentSchema.extend({
+    schemaVersion: z.literal(SESSION_CONVERSATION_MEMORY_OUTPUT_SCHEMA_VERSION),
+  })
+
+export const sessionConversationMemoryContentOutputSchema = sessionConversationMemoryContentSchema
 
 export const doctorSummaryContentSchema = z
   .object({
@@ -98,11 +116,35 @@ export function createPatientInteractionInput(input) {
       ? { text: input.userText, inputMethod: input.inputMethod }
       : null,
     gameState: input.gameState ?? null,
+    previousSessionMemory: input.previousSessionMemory ?? null,
     recentConversation: (input.recentConversation ?? []).slice(-10).map((turn) => ({
       role: turn.role === 'assistant' ? 'assistant' : 'user',
       content: String(turn.content).slice(0, 2_000),
       context: turn.context,
     })),
+  }
+}
+
+export function createSessionConversationMemoryInput(input) {
+  const selectedTurns = (input.conversationTurns ?? []).slice(-60).reverse()
+  let remainingCharacters = 12_000
+  const conversation = []
+
+  for (const turn of selectedTurns) {
+    if (remainingCharacters <= 0) break
+    const content = String(turn.content ?? '').slice(0, Math.min(1_000, remainingCharacters))
+    if (!content) continue
+    conversation.push({
+      role: turn.role === 'ASSISTANT' ? 'assistant' : 'user',
+      context: turn.context,
+      content,
+    })
+    remainingCharacters -= content.length
+  }
+
+  return {
+    schemaVersion: SESSION_CONVERSATION_MEMORY_INPUT_SCHEMA_VERSION,
+    conversation: conversation.reverse(),
   }
 }
 

@@ -1,7 +1,11 @@
 import { randomInt } from 'node:crypto'
 import prisma from '../db/prisma.js'
 import { buildEmojiMatchQuestions } from './gamesService.js'
-import { generateDoctorSummary } from './aiService.js'
+import {
+  generateDoctorSummary,
+  generateSessionConversationMemory,
+} from './aiService.js'
+import { createSessionConversationMemoryInput } from '../validation/aiSchemas.js'
 
 const GAME_DEFINITIONS = {
   'object-naming': { title: '物品命名游戏', questionCount: 10 },
@@ -376,6 +380,20 @@ function buildSummaryInput(session) {
   }
 }
 
+async function getLatestReadyConversationMemory(userId) {
+  const memory = await prisma.sessionConversationMemory.findFirst({
+    where: {
+      status: 'READY',
+      resultJson: { not: null },
+      session: { userId, status: 'COMPLETED' },
+    },
+    orderBy: { generatedAt: 'desc' },
+    select: { resultJson: true },
+  })
+
+  return memory?.resultJson ?? null
+}
+
 async function loadSessionDetail(userId, sessionId) {
   const session = await getOwnedSession(userId, sessionId, {
     gameRuns: {
@@ -401,8 +419,13 @@ async function loadSessionDetail(userId, sessionId) {
 
 export async function createTrainingSession(user, input) {
   assertPatient(user)
+  const previousConversationMemoryJson = await getLatestReadyConversationMemory(user.id)
   const session = await prisma.trainingSession.create({
-    data: { userId: user.id, metadataJson: json(input.metadata) },
+    data: {
+      userId: user.id,
+      metadataJson: json(input.metadata),
+      previousConversationMemoryJson,
+    },
   })
 
   return serializeSession(session)
@@ -630,18 +653,27 @@ export async function recordConversationTurn(user, sessionId, input) {
 
 export async function finalizeTrainingSession(user, sessionId) {
   assertPatient(user)
-  const existing = await getOwnedSession(user.id, sessionId, { summary: true })
+  const existing = await getOwnedSession(user.id, sessionId, {
+    summary: true,
+    conversationMemory: true,
+  })
   if (!existing) {
     throw new TrainingError(404, 'SESSION_NOT_FOUND', '训练会话不存在')
   }
-  const canRetrySummary = existing.status === 'COMPLETED' && existing.summary?.status === 'FAILED'
-  if (existing.status === 'COMPLETED' && !canRetrySummary) {
+  const shouldGenerateSummary =
+    existing.status === ACTIVE_SESSION || existing.summary?.status !== 'READY'
+  const shouldGenerateMemory =
+    existing.status === ACTIVE_SESSION || existing.conversationMemory?.status !== 'READY'
+  const canRetryGeneration =
+    existing.status === 'COMPLETED' && (shouldGenerateSummary || shouldGenerateMemory)
+  if (existing.status === 'COMPLETED' && !canRetryGeneration) {
     return getTrainingSession(user, sessionId)
   }
-  if (existing.status !== ACTIVE_SESSION && !canRetrySummary) {
+  if (existing.status !== ACTIVE_SESSION && !canRetryGeneration) {
     throw new TrainingError(409, 'SESSION_FINALIZATION_IN_PROGRESS', '训练会话正在结束')
   }
 
+  let finalizationPersisted = false
   try {
     const endedAt = existing.endedAt ?? new Date()
     const claimed = await prisma.$transaction(async (tx) => {
@@ -655,17 +687,33 @@ export async function finalizeTrainingSession(user, sessionId) {
         where: { sessionId, status: ACTIVE_RUN },
         data: { status: 'ABANDONED', endedAt },
       })
-      await tx.sessionSummary.upsert({
-        where: { sessionId },
-        update: { status: 'PENDING', errorMessage: null },
-        create: { sessionId, status: 'PENDING' },
-      })
+      if (shouldGenerateSummary) {
+        await tx.sessionSummary.upsert({
+          where: { sessionId },
+          update: { status: 'PENDING', errorMessage: null },
+          create: { sessionId, status: 'PENDING' },
+        })
+      }
+      if (shouldGenerateMemory) {
+        await tx.sessionConversationMemory.upsert({
+          where: { sessionId },
+          update: { status: 'PENDING', errorMessage: null },
+          create: { sessionId, status: 'PENDING' },
+        })
+      }
       return true
     })
 
     if (!claimed) {
-      const latest = await getOwnedSession(user.id, sessionId, { summary: true })
-      if (latest?.status === 'COMPLETED' && latest.summary?.status !== 'FAILED') {
+      const latest = await getOwnedSession(user.id, sessionId, {
+        summary: true,
+        conversationMemory: true,
+      })
+      if (
+        latest?.status === 'COMPLETED' &&
+        latest.summary?.status !== 'FAILED' &&
+        latest.conversationMemory?.status !== 'FAILED'
+      ) {
         return getTrainingSession(user, sessionId)
       }
       throw new TrainingError(409, 'SESSION_FINALIZATION_IN_PROGRESS', '训练会话正在结束')
@@ -673,41 +721,92 @@ export async function finalizeTrainingSession(user, sessionId) {
 
     const finalizingSession = await loadSessionDetail(user.id, sessionId)
     const summaryInput = buildSummaryInput(finalizingSession)
+    const memoryInput = createSessionConversationMemoryInput({
+      conversationTurns: finalizingSession.conversationTurns,
+    })
     const metrics = {
       games: summaryInput.games,
       conversation: summaryInput.conversationMetrics,
     }
 
-    await prisma.$transaction([
-      prisma.trainingSession.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.trainingSession.update({
         where: { id: sessionId },
         data: { metricsJson: json(metrics) },
-      }),
-      prisma.sessionSummary.update({
-        where: { sessionId },
-        data: { inputJson: json(summaryInput) },
-      }),
+      })
+      if (shouldGenerateSummary) {
+        await tx.sessionSummary.update({
+          where: { sessionId },
+          data: { inputJson: json(summaryInput) },
+        })
+      }
+      if (shouldGenerateMemory) {
+        await tx.sessionConversationMemory.update({
+          where: { sessionId },
+          data: { inputJson: json(memoryInput) },
+        })
+      }
+    })
+
+    const [summaryResult, memoryResult] = await Promise.allSettled([
+      shouldGenerateSummary ? generateDoctorSummary(summaryInput) : null,
+      shouldGenerateMemory ? generateSessionConversationMemory(memoryInput) : null,
     ])
 
-    const generated = await generateDoctorSummary(summaryInput)
-    await prisma.$transaction([
-      prisma.sessionSummary.update({
-        where: { sessionId },
-        data: {
-          status: 'READY',
-          provider: generated.provider,
-          promptVersion: generated.promptVersion,
-          resultJson: json(generated.result),
-          generatedAt: new Date(),
-          errorMessage: null,
-        },
-      }),
-      prisma.trainingSession.update({
+    const generatedSummary =
+      shouldGenerateSummary && summaryResult.status === 'fulfilled' ? summaryResult.value : null
+    const generatedMemory =
+      shouldGenerateMemory && memoryResult.status === 'fulfilled' ? memoryResult.value : null
+    const summaryError =
+      shouldGenerateSummary && summaryResult.status === 'rejected' ? summaryResult.reason : null
+
+    await prisma.$transaction(async (tx) => {
+      if (shouldGenerateSummary) {
+        await tx.sessionSummary.update({
+          where: { sessionId },
+          data: generatedSummary
+            ? {
+                status: 'READY',
+                provider: generatedSummary.provider,
+                promptVersion: generatedSummary.promptVersion,
+                resultJson: json(generatedSummary.result),
+                generatedAt: new Date(),
+                errorMessage: null,
+              }
+            : {
+                status: 'FAILED',
+                errorMessage: '医生摘要生成失败，请稍后重试',
+              },
+        })
+      }
+      if (shouldGenerateMemory) {
+        await tx.sessionConversationMemory.update({
+          where: { sessionId },
+          data: generatedMemory
+            ? {
+                status: 'READY',
+                provider: generatedMemory.provider,
+                model: generatedMemory.model,
+                promptVersion: generatedMemory.promptVersion,
+                resultJson: json(generatedMemory.result),
+                generatedAt: new Date(),
+                errorMessage: null,
+              }
+            : {
+                status: 'FAILED',
+                errorMessage: '对话记忆生成失败，请稍后重试',
+              },
+        })
+      }
+      await tx.trainingSession.update({
         where: { id: sessionId },
         data: { status: 'COMPLETED' },
-      }),
-    ])
+      })
+    })
+    finalizationPersisted = true
+    if (summaryError) throw summaryError
   } catch (error) {
+    if (finalizationPersisted) throw error
     if (error instanceof TrainingError && error.code === 'SESSION_FINALIZATION_IN_PROGRESS') {
       throw error
     }
@@ -722,6 +821,18 @@ export async function finalizeTrainingSession(user, sessionId) {
           sessionId,
           status: 'FAILED',
           errorMessage: '医生摘要生成失败，请稍后重试',
+        },
+      })
+      await tx.sessionConversationMemory.upsert({
+        where: { sessionId },
+        update: {
+          status: 'FAILED',
+          errorMessage: '对话记忆生成失败，请稍后重试',
+        },
+        create: {
+          sessionId,
+          status: 'FAILED',
+          errorMessage: '对话记忆生成失败，请稍后重试',
         },
       })
       await tx.trainingSession.updateMany({

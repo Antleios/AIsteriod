@@ -34,6 +34,9 @@ const env = {
   NODE_ENV: 'test',
   AUTH_LOGIN_MAX_ATTEMPTS: '100',
   AUTH_REGISTER_MAX_ATTEMPTS: '100',
+  AI_INTERACTION_PROVIDER: 'deterministic',
+  AI_DOCTOR_PROVIDER: 'deterministic',
+  AI_MEMORY_PROVIDER: 'deterministic',
 }
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
 

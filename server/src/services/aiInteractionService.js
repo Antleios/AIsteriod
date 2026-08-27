@@ -1,6 +1,9 @@
 import prisma from '../db/prisma.js'
 import { generatePatientInteractionReply } from './aiService.js'
-import { createPatientInteractionInput } from '../validation/aiSchemas.js'
+import {
+  createPatientInteractionInput,
+  sessionConversationMemoryOutputSchema,
+} from '../validation/aiSchemas.js'
 
 const ACTIVE_SESSION = 'ACTIVE'
 const MAX_RECENT_TURNS = 10
@@ -24,6 +27,11 @@ function parseJson(value, fallback = null) {
   } catch {
     return fallback
   }
+}
+
+function parsePreviousSessionMemory(value) {
+  const parsed = sessionConversationMemoryOutputSchema.safeParse(parseJson(value, null))
+  return parsed.success ? parsed.data : null
 }
 
 function assertPatient(user) {
@@ -170,6 +178,10 @@ export async function createSessionInteraction(user, sessionId, input) {
       gameState: input.gameState,
       userText: input.userText,
       inputMethod: input.inputMethod,
+      previousSessionMemory:
+        session.nextConversationSequence === 1
+          ? parsePreviousSessionMemory(session.previousConversationMemoryJson)
+          : null,
       recentConversation: await getRecentConversation(sessionId),
     })
     const generated = await generatePatientInteractionReply(llmInput)

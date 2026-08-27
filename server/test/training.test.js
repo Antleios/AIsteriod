@@ -4,6 +4,7 @@ import request from 'supertest'
 import { createApp } from '../src/app.js'
 import prisma from '../src/db/prisma.js'
 import { createUser } from '../src/services/authService.js'
+import { patientInteractionOutputSchema } from '../src/validation/aiSchemas.js'
 
 const app = createApp()
 const allowedOrigin = 'http://localhost:5173'
@@ -47,6 +48,96 @@ describe('training session API', () => {
     assert.equal(response.body.output.schemaVersion, 'patient-interaction-output.v1')
     assert.equal(response.body.output.reply, response.body.reply)
     assert.equal(response.body.ai.prompt.version, 'patient-interaction-v1')
+  })
+
+  it('accepts patient replies up to 1000 characters', () => {
+    const reply = '好'.repeat(1_000)
+    assert.equal(
+      patientInteractionOutputSchema.safeParse({
+        schemaVersion: 'patient-interaction-output.v1',
+        reply,
+        emotion: 'encouraging',
+      }).success,
+      true,
+    )
+    assert.equal(
+      patientInteractionOutputSchema.safeParse({
+        schemaVersion: 'patient-interaction-output.v1',
+        reply: `${reply}好`,
+        emotion: 'encouraging',
+      }).success,
+      false,
+    )
+  })
+
+  it('stores a completed session memory and injects its snapshot into the next session', async () => {
+    await addPatient()
+    const cookie = await login()
+
+    const firstSession = await request(app)
+      .post('/api/training/sessions')
+      .set('Cookie', cookie)
+      .send({})
+    const firstSessionId = firstSession.body.session.id
+    const firstInteraction = await request(app)
+      .post(`/api/ai/sessions/${firstSessionId}/interactions`)
+      .set('Cookie', cookie)
+      .send({
+        clientRequestId: 'memory-first-interaction',
+        trigger: 'USER_MESSAGE',
+        context: 'CHAT',
+        userText: '下次我想继续聊画画。',
+      })
+    assert.equal(firstInteraction.status, 201)
+
+    const finalized = await request(app)
+      .post(`/api/training/sessions/${firstSessionId}/finalize`)
+      .set('Cookie', cookie)
+      .send({})
+    assert.equal(finalized.status, 200)
+
+    const memory = await prisma.sessionConversationMemory.findUniqueOrThrow({
+      where: { sessionId: firstSessionId },
+      select: { status: true, provider: true, model: true, resultJson: true },
+    })
+    assert.equal(memory.status, 'READY')
+    assert.equal(memory.provider, 'deterministic')
+    assert.equal(memory.model, null)
+    assert.equal(JSON.parse(memory.resultJson).schemaVersion, 'session-conversation-memory-output.v1')
+
+    const secondSession = await request(app)
+      .post('/api/training/sessions')
+      .set('Cookie', cookie)
+      .send({})
+    const secondSessionId = secondSession.body.session.id
+    const storedSecondSession = await prisma.trainingSession.findUniqueOrThrow({
+      where: { id: secondSessionId },
+      select: { previousConversationMemoryJson: true },
+    })
+    assert.deepEqual(
+      JSON.parse(storedSecondSession.previousConversationMemoryJson),
+      JSON.parse(memory.resultJson),
+    )
+
+    const secondInteraction = await request(app)
+      .post(`/api/ai/sessions/${secondSessionId}/interactions`)
+      .set('Cookie', cookie)
+      .send({
+        clientRequestId: 'memory-second-interaction',
+        trigger: 'USER_MESSAGE',
+        context: 'CHAT',
+        userText: '你好。',
+      })
+    assert.equal(secondInteraction.status, 201)
+
+    const savedInteraction = await prisma.aiInteraction.findUniqueOrThrow({
+      where: { id: secondInteraction.body.interaction.id },
+      select: { requestJson: true },
+    })
+    assert.deepEqual(
+      JSON.parse(savedInteraction.requestJson).previousSessionMemory,
+      JSON.parse(memory.resultJson),
+    )
   })
 
   it('keeps an immutable game snapshot, evaluates attempts server-side, and finalizes metrics', async () => {

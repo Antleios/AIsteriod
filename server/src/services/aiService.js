@@ -6,16 +6,28 @@ import {
   DOCTOR_SUMMARY_OUTPUT_SCHEMA_VERSION,
   patientInteractionOutputSchema,
   PATIENT_INTERACTION_OUTPUT_SCHEMA_VERSION,
+  sessionConversationMemoryContentOutputSchema,
+  sessionConversationMemoryOutputSchema,
+  SESSION_CONVERSATION_MEMORY_OUTPUT_SCHEMA_VERSION,
 } from '../validation/aiSchemas.js'
 import {
   createPromptMessage,
   resolveDoctorSummaryPrompt,
   resolvePatientInteractionPrompt,
+  resolveSessionConversationMemoryPrompt,
 } from './aiPrompts.js'
 
-const QWEN_CHAT_URL =
-  process.env.QWEN_BASE_URL ??
-  'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
+function configuredQwenChatUrl() {
+  const baseUrl = process.env.QWEN_BASE_URL?.trim()
+  if (!baseUrl) {
+    return 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
+  }
+
+  const normalizedUrl = baseUrl.replace(/\/+$/, '')
+  return normalizedUrl.endsWith('/chat/completions')
+    ? normalizedUrl
+    : `${normalizedUrl}/chat/completions`
+}
 
 function configuredProvider(scope) {
   return process.env[`AI_${scope}_PROVIDER`] ?? process.env.AI_PROVIDER ?? 'deterministic'
@@ -52,6 +64,25 @@ function createDeterministicDoctorSummary(input) {
       ? observedLanguageBehavior
       : ['本次没有足够的用户语音或文本记录可供判断。'],
     comparisonWithinSession: '本摘要仅描述本次会话中的可观察数据，不构成医学诊断或长期推断。',
+  }
+}
+
+function createDeterministicSessionConversationMemory(input) {
+  const userTurns = input.conversation.filter((turn) => turn.role === 'user')
+  if (!userTurns.length) {
+    return {
+      summary: '本次会话没有足够的用户对话内容可供下次延续。',
+      continuityNotes: [],
+    }
+  }
+
+  const continuityNotes = userTurns
+    .slice(-3)
+    .map((turn) => `用户在${turn.context}场景中提到：${turn.content.slice(0, 120)}`)
+
+  return {
+    summary: `本次会话记录了${userTurns.length}次用户表达；后续可在合适时延续其最近提到的话题。`,
+    continuityNotes,
   }
 }
 
@@ -97,7 +128,7 @@ async function requestQwenJson({ model, temperature, prompt, input }) {
   const timeout = setTimeout(() => controller.abort(), 12_000)
 
   try {
-    const response = await fetch(QWEN_CHAT_URL, {
+    const response = await fetch(configuredQwenChatUrl(), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${process.env.QWEN_API_KEY}`,
@@ -136,6 +167,13 @@ function doctorOutput(content) {
   })
 }
 
+function sessionConversationMemoryOutput(content) {
+  return sessionConversationMemoryOutputSchema.parse({
+    schemaVersion: SESSION_CONVERSATION_MEMORY_OUTPUT_SCHEMA_VERSION,
+    ...content,
+  })
+}
+
 async function generateQwenDoctorSummary(input, prompt) {
   const content = validateModelOutput(
     doctorSummaryContentSchema,
@@ -162,6 +200,20 @@ async function generateQwenPatientReply(input, prompt) {
     'Qwen patient interaction',
   )
   return patientOutput(content)
+}
+
+async function generateQwenSessionConversationMemory(input, prompt) {
+  const content = validateModelOutput(
+    sessionConversationMemoryContentOutputSchema,
+    await requestQwenJson({
+      model: configuredModel('QWEN_MEMORY_MODEL', 'qwen-plus'),
+      temperature: prompt.temperature,
+      prompt,
+      input,
+    }),
+    'Qwen session conversation memory',
+  )
+  return sessionConversationMemoryOutput(content)
 }
 
 function metadata(provider, model, prompt, input) {
@@ -213,6 +265,23 @@ export async function generatePatientInteractionReply(input) {
     output,
     // Compatibility for service callers introduced before the explicit output
     // envelope. New callers should use `output` and `prompt`.
+    result: output,
+    promptVersion: prompt.version,
+  }
+}
+
+export async function generateSessionConversationMemory(input) {
+  const prompt = resolveSessionConversationMemoryPrompt()
+  const provider = configuredProvider('MEMORY')
+  const model = provider === 'qwen' ? configuredModel('QWEN_MEMORY_MODEL', 'qwen-plus') : null
+  const output =
+    provider === 'qwen'
+      ? await generateQwenSessionConversationMemory(input, prompt)
+      : sessionConversationMemoryOutput(createDeterministicSessionConversationMemory(input))
+
+  return {
+    ...metadata(provider, model, prompt, input),
+    output,
     result: output,
     promptVersion: prompt.version,
   }
