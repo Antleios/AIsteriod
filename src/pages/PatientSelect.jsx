@@ -1,12 +1,18 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getCurrentUser, logout } from '../api/auth.js'
+import { fetchCurrentUser, logout } from '../api/auth.js'
 
 function PatientSelect() {
   const navigate = useNavigate()
-  const user = getCurrentUser()
+  const [user, setUser] = useState(null)
 
-  const handleLogout = () => {
-    logout()
+  useEffect(() => {
+    fetchCurrentUser().then(setUser)
+  }, [])
+
+  const handleLogout = async () => {
+    await logout()
+    setUser(null)
     navigate('/')
   }
 

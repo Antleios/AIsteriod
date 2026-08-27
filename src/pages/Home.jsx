@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
 import LoginModal from '../components/LoginModal.jsx'
-import { isLoggedIn } from '../api/auth.js'
+import { fetchCurrentUser } from '../api/auth.js'
 import aiLogo from '../assets/logo.jpg'
 import patientIcon from '../assets/patient.jpg'
 import doctorIcon from '../assets/doctor.jpg'
@@ -11,8 +11,9 @@ function Home() {
   const navigate = useNavigate()
   const [loginOpen, setLoginOpen] = useState(false)
 
-  const handlePatientClick = () => {
-    if (isLoggedIn()) {
+  const handlePatientClick = async () => {
+    const user = await fetchCurrentUser()
+    if (user) {
       navigate('/patient')
     } else {
       setLoginOpen(true)

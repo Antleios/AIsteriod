@@ -1,72 +1,76 @@
-// 预留登录接口 —— 当前全部为 mock 实现，用于前端先跑通完整登录流程。
-// 后续接入真实后端：只需替换各函数函数体（参照 README「AI 接入指南」的接入思路），
-// 登录弹窗与页面无需改动。
+// 登录接口 —— 对接真实后端（server/src/routes/auth.js）
+//
+// 鉴权方式：服务端 Session + HttpOnly Cookie（开发环境 cookie 名为 aisteriod_session）。
+// 前端所有请求必须携带 credentials: 'include'，否则拿不到/发不出会话 Cookie。
+// 后端接口文档见 server/AUTH_API.md。
 
-const AUTH_KEY = 'alsteroid_auth'
+const BASE = '/api/auth'
 
-const delay = (ms = 500) => new Promise((resolve) => setTimeout(resolve, ms))
+async function request(path, options = {}) {
+  const res = await fetch(`${BASE}${path}`, {
+    credentials: 'include',
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) },
+  })
 
-/** 读取当前登录用户（localStorage 持久化），未登录返回 null */
-export function getCurrentUser() {
+  if (!res.ok) {
+    throw new Error(await readApiError(res))
+  }
+
+  return res.status === 204 ? null : res.json()
+}
+
+async function readApiError(res) {
   try {
-    const raw = localStorage.getItem(AUTH_KEY)
-    return raw ? JSON.parse(raw) : null
+    const data = await res.json()
+    if (data?.error?.message) return data.error.message
+    if (Array.isArray(data?.error?.details)) {
+      return data.error.details.map((d) => d.message).join('；')
+    }
+  } catch {
+    // 响应体不是 JSON，走兜底文案
+  }
+  return `请求失败 (${res.status})`
+}
+
+/** 密码登录 → POST /api/auth/login，成功后写入会话 Cookie */
+export async function loginWithPassword({ account, password }) {
+  const data = await request('/login', {
+    method: 'POST',
+    body: JSON.stringify({ username: account, password }),
+  })
+  return data.user
+}
+
+/** 注册 → POST /api/auth/register（患者成功即自动登录，后端已写入会话 Cookie） */
+export async function register({
+  username,
+  password,
+  displayName,
+  role = 'PATIENT',
+}) {
+  const data = await request('/register', {
+    method: 'POST',
+    body: JSON.stringify({ username, password, displayName, role }),
+  })
+  return data.user
+}
+
+/** 恢复登录态 → GET /api/auth/me；未登录或后端不可用返回 null */
+export async function fetchCurrentUser() {
+  try {
+    const data = await request('/me')
+    return data.user
   } catch {
     return null
   }
 }
 
-/** 是否已登录 */
-export function isLoggedIn() {
-  return Boolean(getCurrentUser())
-}
-
-/** 退出登录 */
-export function logout() {
-  localStorage.removeItem(AUTH_KEY)
-}
-
-/**
- * 发送短信验证码
- * TODO: 后端接入 —— POST /api/auth/sms-code { phone }
- * mock：合法手机号视为发送成功，验证码可填任意 6 位数字
- */
-export async function sendSmsCode(phone) {
-  await delay(600)
-  if (!/^1[3-9]\d{9}$/.test(phone)) {
-    throw new Error('请输入正确的手机号')
+/** 退出登录 → POST /api/auth/logout（服务端撤销会话并清除 Cookie） */
+export async function logout() {
+  try {
+    await request('/logout', { method: 'POST' })
+  } catch {
+    // 网络异常时忽略，本地登录态同样视为已退出
   }
-  return { ok: true, message: `验证码已发送至 ${phone}` }
-}
-
-/**
- * 密码登录
- * TODO: 后端接入 —— POST /api/auth/login { account, password }
- * mock：账号密码非空即可登录（演示用）
- */
-export async function loginWithPassword({ account, password }) {
-  await delay(600)
-  if (!account?.trim()) throw new Error('请输入账号')
-  if (!password) throw new Error('请输入密码')
-  const user = { account: account.trim(), loginMethod: 'password' }
-  persistAuth(user)
-  return user
-}
-
-/**
- * 短信登录 / 注册（未注册手机号验证后自动注册，即「直接注册/登录」）
- * TODO: 后端接入 —— POST /api/auth/sms-login { phone, code }
- * mock：手机号合法 + 6 位验证码即可
- */
-export async function loginWithSms({ phone, code }) {
-  await delay(600)
-  if (!/^1[3-9]\d{9}$/.test(phone)) throw new Error('请输入正确的手机号')
-  if (!/^\d{6}$/.test(code)) throw new Error('请输入 6 位验证码')
-  const user = { phone, loginMethod: 'sms' }
-  persistAuth(user)
-  return user
-}
-
-function persistAuth(user) {
-  localStorage.setItem(AUTH_KEY, JSON.stringify({ ...user, ts: Date.now() }))
 }

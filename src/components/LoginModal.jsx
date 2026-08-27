@@ -1,22 +1,26 @@
 import { useEffect, useState } from 'react'
-import * as auth from '../api/auth.js'
+import { loginWithPassword, register } from '../api/auth.js'
+
+const USERNAME_RE = /^[a-zA-Z0-9._-]{3,32}$/
 
 /**
  * 患者端登录卡片（类 B 站弹窗登录）
  *
- * - 两种登录方式：密码登录 / 短信登录
- * - 密码登录页含「登录」主操作 +「注册」链接，点注册跳转到短信登录界面
- * - 短信登录未注册手机号验证后自动注册，可直接登录/注册
- * - 具体逻辑由 src/api/auth.js 提供（当前为 mock，后续接后端）
+ * - 两种方式：密码登录 / 注册
+ * - 密码登录页含「登录」主操作 +「注册」链接，点注册跳到注册界面
+ * - 注册患者账号成功即自动登录（后端写入会话 Cookie）
+ * - 具体逻辑对接真实后端（src/api/auth.js → server/routes/auth.js）
  */
 function LoginModal({ open, onClose, onSuccess }) {
-  const [tab, setTab] = useState('password') // 'password' | 'sms'
+  const [tab, setTab] = useState('password') // 'password' | 'register'
   const [account, setAccount] = useState('')
   const [password, setPassword] = useState('')
   const [showPwd, setShowPwd] = useState(false)
-  const [phone, setPhone] = useState('')
-  const [code, setCode] = useState('')
-  const [countdown, setCountdown] = useState(0)
+  // 注册字段
+  const [username, setUsername] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -28,34 +32,37 @@ function LoginModal({ open, onClose, onSuccess }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
-  // 验证码倒计时
-  useEffect(() => {
-    if (countdown <= 0) return
-    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000)
-    return () => clearTimeout(timer)
-  }, [countdown])
-
-  // 切换登录方式时清空错误提示
+  // 切换方式时清空错误提示
   useEffect(() => setError(''), [tab])
 
   if (!open) return null
 
-  const handleSendCode = async () => {
-    setError('')
-    if (!/^1[3-9]\d{9}$/.test(phone)) {
-      setError('请输入正确的手机号')
-      return
+  const validateRegister = () => {
+    if (!USERNAME_RE.test(username.trim())) {
+      return '用户名需 3-32 位，仅支持字母、数字、点、下划线和连字符'
     }
-    await auth.sendSmsCode(phone)
-    setCountdown(60)
+    if (!displayName.trim()) return '请输入昵称'
+    if (displayName.trim().length > 50) return '昵称不能超过 50 个字符'
+    if (newPassword.length < 10) return '密码至少需要 10 个字符'
+    if (newPassword.length > 128) return '密码不能超过 128 个字符'
+    if (newPassword !== confirmPassword) return '两次输入的密码不一致'
+    return null
   }
 
   const handlePasswordLogin = async (e) => {
     e.preventDefault()
     setError('')
+    if (!account.trim()) {
+      setError('请输入用户名')
+      return
+    }
+    if (!password) {
+      setError('请输入密码')
+      return
+    }
     setLoading(true)
     try {
-      await auth.loginWithPassword({ account, password })
+      await loginWithPassword({ account: account.trim(), password })
       onSuccess?.()
     } catch (err) {
       setError(err.message || '登录失败，请重试')
@@ -64,15 +71,24 @@ function LoginModal({ open, onClose, onSuccess }) {
     }
   }
 
-  const handleSmsLogin = async (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault()
     setError('')
+    const message = validateRegister()
+    if (message) {
+      setError(message)
+      return
+    }
     setLoading(true)
     try {
-      await auth.loginWithSms({ phone, code })
+      await register({
+        username: username.trim().toLowerCase(),
+        password: newPassword,
+        displayName: displayName.trim(),
+      })
       onSuccess?.()
     } catch (err) {
-      setError(err.message || '登录失败，请重试')
+      setError(err.message || '注册失败，请重试')
     } finally {
       setLoading(false)
     }
@@ -111,26 +127,28 @@ function LoginModal({ open, onClose, onSuccess }) {
         </button>
 
         {/* 标题 */}
-        <h2 className="text-2xl font-bold text-[#1E3A5F]">患者端登录</h2>
-        <p className="mt-1 text-sm text-gray-400">登录后即可开始训练与 AI 对话</p>
+        <h2 className="text-2xl font-bold text-[#1E3A5F]">患者端</h2>
+        <p className="mt-1 text-sm text-gray-400">
+          {tab === 'password' ? '登录后即可开始训练与 AI 对话' : '注册患者账号，登录后即可开始训练'}
+        </p>
 
-        {/* 登录方式切换 */}
+        {/* 登录 / 注册 切换 */}
         <div className="mt-6 grid grid-cols-2 gap-1 rounded-full bg-[#EAF4FF] p-1">
           <button type="button" className={tabCls(tab === 'password')} onClick={() => setTab('password')}>
             密码登录
           </button>
-          <button type="button" className={tabCls(tab === 'sms')} onClick={() => setTab('sms')}>
-            短信登录
+          <button type="button" className={tabCls(tab === 'register')} onClick={() => setTab('register')}>
+            注册
           </button>
         </div>
 
-        {/* 密码登录：可登录，也可点注册跳到短信登录界面 */}
+        {/* 密码登录 */}
         {tab === 'password' && (
           <form onSubmit={handlePasswordLogin} className="mt-6 flex flex-col gap-4">
             <input
               value={account}
               onChange={(e) => setAccount(e.target.value)}
-              placeholder="账号 / 手机号"
+              placeholder="用户名"
               autoComplete="username"
               className={inputCls}
             />
@@ -179,61 +197,62 @@ function LoginModal({ open, onClose, onSuccess }) {
 
             <button
               type="button"
-              onClick={() => setTab('sms')}
+              onClick={() => setTab('register')}
               className="text-center text-sm text-[#3B82F6] transition-colors hover:underline"
             >
-              没有账号？点击注册，短信快捷登录 →
+              没有账号？点击注册 →
             </button>
           </form>
         )}
 
-        {/* 短信登录：未注册手机号验证后自动注册，可直接登录/注册 */}
-        {tab === 'sms' && (
-          <form onSubmit={handleSmsLogin} className="mt-6 flex flex-col gap-4">
+        {/* 注册 */}
+        {tab === 'register' && (
+          <form onSubmit={handleRegister} className="mt-6 flex flex-col gap-4">
             <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="手机号"
-              autoComplete="tel"
-              maxLength={11}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="用户名（3-32 位，字母/数字/._-）"
+              autoComplete="username"
               className={inputCls}
             />
-
-            <div className="flex gap-2">
-              <input
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="6 位验证码"
-                autoComplete="one-time-code"
-                maxLength={6}
-                className={inputCls}
-              />
-              <button
-                type="button"
-                onClick={handleSendCode}
-                disabled={countdown > 0}
-                className="w-[112px] flex-shrink-0 rounded-xl border border-[#3B82F6]/30 bg-[#EAF4FF] text-sm font-medium text-[#3B82F6] transition-all hover:bg-[#3B82F6] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {countdown > 0 ? `${countdown}s 后重发` : '获取验证码'}
-              </button>
-            </div>
+            <input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="昵称（1-50 个字符）"
+              autoComplete="nickname"
+              className={inputCls}
+            />
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="密码（至少 10 位）"
+              autoComplete="new-password"
+              className={inputCls}
+            />
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="确认密码"
+              autoComplete="new-password"
+              className={inputCls}
+            />
 
             {error && <p className="text-sm text-red-500">{error}</p>}
 
             <button type="submit" disabled={loading} className={submitBtnCls}>
-              {loading ? '登录中…' : '登录 / 注册'}
+              {loading ? '注册中…' : '注 册'}
             </button>
 
-            <p className="text-center text-xs text-gray-400">
-              未注册的手机号验证后将自动注册，无需额外填写
-            </p>
+            <p className="text-center text-xs text-gray-400">注册即创建患者账号，成功后自动登录</p>
 
             <button
               type="button"
               onClick={() => setTab('password')}
               className="text-center text-sm text-[#3B82F6] transition-colors hover:underline"
             >
-              使用密码登录 →
+              已有账号？返回登录 →
             </button>
           </form>
         )}
