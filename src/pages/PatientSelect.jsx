@@ -1,7 +1,14 @@
 import { useNavigate } from 'react-router-dom'
+import { getCurrentUser, logout } from '../api/auth.js'
 
 function PatientSelect() {
   const navigate = useNavigate()
+  const user = getCurrentUser()
+
+  const handleLogout = () => {
+    logout()
+    navigate('/')
+  }
 
   const options = [
     {
@@ -34,7 +41,23 @@ function PatientSelect() {
           返回首页
         </button>
         <h1 className="flex-1 text-center text-2xl font-bold text-[#3B82F6]">患者端</h1>
-        <div className="w-[88px]" />
+        <div className="flex w-[88px] items-center justify-end">
+          {user && (
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1 text-sm text-gray-400 transition-colors hover:text-red-500"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                />
+              </svg>
+              退出
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Choose an option */}

@@ -1,11 +1,24 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
+import LoginModal from '../components/LoginModal.jsx'
+import { isLoggedIn } from '../api/auth.js'
 import aiLogo from '../assets/logo.jpg'
 import patientIcon from '../assets/patient.jpg'
 import doctorIcon from '../assets/doctor.jpg'
 
 function Home() {
   const navigate = useNavigate()
+  const [loginOpen, setLoginOpen] = useState(false)
+
+  const handlePatientClick = () => {
+    if (isLoggedIn()) {
+      navigate('/patient')
+    } else {
+      setLoginOpen(true)
+    }
+  }
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-white via-[#EAF4FF]/40 to-[#EAF4FF]/80">
       {/* Animated gradient overlay */}
@@ -55,7 +68,7 @@ function Home() {
 
             {/* Button */}
             <button
-              onClick={() => navigate('/patient')}
+              onClick={handlePatientClick}
               className="flex w-full items-center gap-3 rounded-xl border border-gray-100 bg-white/80 px-4 py-3 text-left shadow-sm transition-all duration-300 hover:border-[#3B82F6]/30 hover:shadow-[0_0_20px_rgba(59,130,246,0.25)]"
             >
               <img
@@ -178,6 +191,13 @@ function Home() {
           animation: waveMedium 6s ease-in-out infinite;
         }
       `}</style>
+
+      {/* 患者端登录卡片 */}
+      <LoginModal
+        open={loginOpen}
+        onClose={() => setLoginOpen(false)}
+        onSuccess={() => navigate('/patient')}
+      />
     </div>
   )
 }

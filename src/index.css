@@ -1,1 +1,18 @@
 @import "tailwindcss";
+
+/* 登录弹窗动画 */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+@keyframes modal-pop {
+  from { opacity: 0; transform: translateY(16px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-modal-pop {
+  animation: modal-pop 0.25s ease-out;
+}
