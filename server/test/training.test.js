@@ -304,6 +304,15 @@ describe('training session API', () => {
       .send({ gameCode: 'object-naming' })
     assert.equal(gameRunResponse.status, 201)
     const question = gameRunResponse.body.gameRun.questions[0]
+    assert.equal(question.answer, undefined)
+    assert.equal(question.displayAnswer, undefined)
+
+    const privateQuestion = await prisma.gameRunQuestion.findUniqueOrThrow({
+      where: { id: question.id },
+      select: { answerJson: true },
+    })
+    const expectedDisplayAnswer = JSON.parse(privateQuestion.answerJson).displayAnswer
+    assert.equal(typeof expectedDisplayAnswer, 'string')
 
     const revealed = await request(app)
       .post(`/api/training/sessions/${sessionId}/questions/${question.id}/attempts`)
@@ -313,6 +322,7 @@ describe('training session API', () => {
     assert.equal(revealed.body.attempt.isCorrect, false)
     assert.equal(revealed.body.attempt.isRevealed, true)
     assert.equal(revealed.body.attempt.outcome, 'REVEALED')
+    assert.equal(revealed.body.attempt.revealedAnswer, expectedDisplayAnswer)
 
     const completedQuestion = await prisma.gameRunQuestion.findUniqueOrThrow({
       where: { id: question.id },

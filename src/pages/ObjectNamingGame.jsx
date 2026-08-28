@@ -299,6 +299,7 @@ function ObjectNamingGame() {
   }
 
   const revealAnswer = async () => {
+    let revealedAnswer = current.name
     if (current.questionId) {
       setStep('submitting')
       try {
@@ -307,16 +308,19 @@ function ObjectNamingGame() {
           action: 'REVEAL',
           responseTimeMs: currentTime() - questionStartedAtRef.current,
         })
-        if (!attempt?.isRevealed) throw new Error('REVEAL_NOT_RECORDED')
+        if (!attempt?.isRevealed || !attempt.revealedAnswer) {
+          throw new Error('REVEAL_ANSWER_UNAVAILABLE')
+        }
+        revealedAnswer = attempt.revealedAnswer
       } catch {
         setStep('feedback_incorrect')
-        setFeedbackText('训练记录暂不可用，请稍后再试。')
+        setFeedbackText('答案暂不可用，请稍后再试。')
         return
       }
     }
 
     setStep('feedback_correct')
-    const answerName = current.name ? `${current.name}哦！` : '这个物品哦！'
+    const answerName = `${revealedAnswer}哦！`
     setFeedbackText(`这是${answerName}${current.emoji}`)
     speak(`这是${answerName}`)
     setTodayCompleted((n) => n + 1)

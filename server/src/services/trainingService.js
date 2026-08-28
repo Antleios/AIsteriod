@@ -214,7 +214,10 @@ async function createObjectNamingQuestions() {
       assetValue: question.assetValue,
       difficulty: question.difficulty,
     }),
-    answerJson: json({ acceptedAnswers: [normalizeAnswer(question.answer)] }),
+    answerJson: json({
+      acceptedAnswers: [normalizeAnswer(question.answer)],
+      displayAnswer: question.answer,
+    }),
   }))
 }
 
@@ -297,6 +300,15 @@ function isCorrectAnswer(question, answer) {
   }
 
   return expected.correctOptionId === String(answer ?? '')
+}
+
+function getSnapshotDisplayAnswer(question) {
+  const expected = parseJson(question.answerJson, {})
+  const displayAnswer = expected.displayAnswer
+
+  return typeof displayAnswer === 'string' && displayAnswer.trim()
+    ? displayAnswer.trim()
+    : null
 }
 
 function computeGameMetrics(gameRuns, events) {
@@ -514,6 +526,24 @@ export async function recordGameAttempt(user, sessionId, questionId, input) {
     }
 
     const isCorrect = !isRevealed && isCorrectAnswer(question, input.answer)
+    let revealedAnswer = null
+    if (isRevealed) {
+      revealedAnswer = getSnapshotDisplayAnswer(question)
+
+      // Runs created before displayAnswer was added can still reveal their answer.
+      if (!revealedAnswer && question.sourceQuestionId) {
+        const sourceQuestion = await tx.objectNamingQuestion.findUnique({
+          where: { id: question.sourceQuestionId },
+          select: { answer: true },
+        })
+        revealedAnswer = sourceQuestion?.answer?.trim() || null
+      }
+
+      if (!revealedAnswer) {
+        throw new TrainingError(409, 'REVEAL_ANSWER_UNAVAILABLE', '该题答案暂不可用')
+      }
+    }
+
     const created = await tx.gameAttempt.create({
       data: {
         gameRunQuestionId: question.id,
@@ -561,7 +591,7 @@ export async function recordGameAttempt(user, sessionId, questionId, input) {
       where: { id: question.gameRunId },
       select: { status: true, endedAt: true },
     })
-    return { attempt: created, question, run, isCorrect, isRevealed }
+    return { attempt: created, question, run, isCorrect, isRevealed, revealedAnswer }
   })
 
   return {
@@ -570,6 +600,7 @@ export async function recordGameAttempt(user, sessionId, questionId, input) {
     outcome: result.attempt.outcome,
     isCorrect: result.isCorrect,
     isRevealed: result.isRevealed,
+    ...(result.isRevealed ? { revealedAnswer: result.revealedAnswer } : {}),
     responseTimeMs: result.attempt.responseTimeMs,
     gameRun: {
       id: result.question.gameRunId,
