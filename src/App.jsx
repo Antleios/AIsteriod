@@ -9,6 +9,7 @@ import ObjectNamingGame from './pages/ObjectNamingGame.jsx'
 import Doctor from './pages/Doctor.jsx'
 import DoctorUsers from './pages/DoctorUsers.jsx'
 import DoctorTraining from './pages/DoctorTraining.jsx'
+import DoctorConversations from './pages/DoctorConversations.jsx'
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
         <Route path="/doctor" element={<Doctor />} />
         <Route path="/doctor/users" element={<DoctorUsers />} />
         <Route path="/doctor/training" element={<DoctorTraining />} />
+        <Route path="/doctor/conversations" element={<DoctorConversations />} />
       </Routes>
     </BrowserRouter>
   )

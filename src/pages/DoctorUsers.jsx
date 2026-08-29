@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import DoctorHeader from '../components/DoctorHeader.jsx'
 
-// 患者与用户管理 —— 当前为前端 mock 数据 + 本地增删改，后端接入后替换为真实接口
+// 患者病历管理 —— 当前为前端 mock 数据 + 本地增删改，后端接入后替换为真实接口
 const initialPatients = [
   { id: 1, name: '张小明', age: 6, gender: '男', status: '训练中', doctor: '李医生', lastTraining: '物品命名 · 85%' },
   { id: 2, name: '王小雅', age: 8, gender: '女', status: '待评估', doctor: '李医生', lastTraining: '颜色连线 · 92%' },
@@ -133,7 +133,7 @@ function DoctorUsers() {
       <DoctorHeader />
 
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-6 pb-16 pt-6">
-        <h1 className="text-2xl font-bold text-[#1E3A5F]">患者与用户管理</h1>
+        <h1 className="text-2xl font-bold text-[#1E3A5F]">患者病历管理</h1>
         <p className="mt-1 text-sm text-gray-400">
           共 {list.length} 条{isPatients ? '患者' : '账号'}（前端 mock 数据，后端待接入）
         </p>

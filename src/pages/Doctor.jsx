@@ -38,6 +38,25 @@ function ChartIcon() {
   )
 }
 
+function ChatIcon() {
+  return (
+    <svg
+      className="h-7 w-7"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      <path d="M8 10h.01" />
+      <path d="M12 10h.01" />
+      <path d="M16 10h.01" />
+    </svg>
+  )
+}
+
 // 数据概览 —— 前端 mock，后端接入后替换为真实统计接口
 const stats = [
   { label: '患者总数', value: '128', unit: '人', color: '#3B82F6' },
@@ -50,8 +69,8 @@ const stats = [
 const modules = [
   {
     path: '/doctor/users',
-    title: '患者与用户管理',
-    desc: '查看患者档案与账号信息，统一管理',
+    title: '患者病历管理',
+    desc: '查看患者病历档案与账号信息，统一管理',
     color: '#3B82F6',
     icon: <UsersIcon />,
   },
@@ -61,6 +80,13 @@ const modules = [
     desc: '查看患者各训练游戏的表现与记录',
     color: '#8B5CF6',
     icon: <ChartIcon />,
+  },
+  {
+    path: '/doctor/conversations',
+    title: '对话数据',
+    desc: '查看患者与 AI 的对话记录与情感分析',
+    color: '#14B8A6',
+    icon: <ChatIcon />,
   },
 ]
 
