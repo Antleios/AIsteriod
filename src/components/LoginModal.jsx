@@ -4,14 +4,14 @@ import { loginWithPassword, register } from '../api/auth.js'
 const USERNAME_RE = /^[a-zA-Z0-9._-]{3,32}$/
 
 /**
- * 患者端登录卡片（类 B 站弹窗登录）
+ * 登录卡片（类 B 站弹窗登录），患者端 / 医生端共用
  *
  * - 两种方式：密码登录 / 注册
  * - 密码登录页含「登录」主操作 +「注册」链接，点注册跳到注册界面
- * - 注册患者账号成功即自动登录（后端写入会话 Cookie）
+ * - 注册患者 / 医生账号成功即自动登录（后端写入会话 Cookie）
  * - 具体逻辑对接真实后端（src/api/auth.js → server/routes/auth.js）
  */
-function LoginModal({ open, onClose, onSuccess }) {
+function LoginModal({ open, onClose, onSuccess, role = 'PATIENT' }) {
   const [tab, setTab] = useState('password') // 'password' | 'register'
   const [account, setAccount] = useState('')
   const [password, setPassword] = useState('')
@@ -23,6 +23,8 @@ function LoginModal({ open, onClose, onSuccess }) {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const isDoctor = role === 'DOCTOR'
 
   // Esc 关闭
   useEffect(() => {
@@ -85,6 +87,7 @@ function LoginModal({ open, onClose, onSuccess }) {
         username: username.trim().toLowerCase(),
         password: newPassword,
         displayName: displayName.trim(),
+        role,
       })
       onSuccess?.()
     } catch (err) {
@@ -127,9 +130,15 @@ function LoginModal({ open, onClose, onSuccess }) {
         </button>
 
         {/* 标题 */}
-        <h2 className="text-2xl font-bold text-[#1E3A5F]">患者端</h2>
+        <h2 className="text-2xl font-bold text-[#1E3A5F]">{isDoctor ? '医生端' : '患者端'}</h2>
         <p className="mt-1 text-sm text-gray-400">
-          {tab === 'password' ? '登录后即可开始训练与 AI 对话' : '注册患者账号，登录后即可开始训练'}
+          {tab === 'password'
+            ? isDoctor
+              ? '登录医生账号，即可管理患者训练'
+              : '登录后即可开始训练与 AI 对话'
+            : isDoctor
+              ? '注册医生账号，登录后即可使用'
+              : '注册患者账号，登录后即可开始训练'}
         </p>
 
         {/* 登录 / 注册 切换 */}
@@ -245,7 +254,9 @@ function LoginModal({ open, onClose, onSuccess }) {
               {loading ? '注册中…' : '注 册'}
             </button>
 
-            <p className="text-center text-xs text-gray-400">注册即创建患者账号，成功后自动登录</p>
+            <p className="text-center text-xs text-gray-400">
+              注册即创建{isDoctor ? '医生' : '患者'}账号，成功后自动登录
+            </p>
 
             <button
               type="button"

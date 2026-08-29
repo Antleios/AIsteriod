@@ -7,7 +7,7 @@ Base URL：`http://127.0.0.1:3001/api/auth`。接口使用服务端 Session：�
 - 请求体为 `application/json`，最大 16 KB。
 - 用户名会去除首尾空格并转换为小写；长度 3–32，只能使用字母、数字、`.`、`_`、`-`。
 - 密码长度为 10–128 个字符。
-- 角色为 `PATIENT`、`DOCTOR`、`ADMIN`。患者仅能创建和读取自己的训练会话；医生仅能读取已关联患者的摘要；管理员管理医生审核和医患关联。
+- 角色为 `PATIENT`、`DOCTOR`、`ADMIN`。患者仅能创建和读取自己的训练会话；医生仅能读取已关联患者的摘要。管理员账号由后端命令行创建，仅供内部使用。
 - 所有响应均有 `Cache-Control: no-store`。未知用户、错误密码和已禁用账户均返回相同的 401 响应，避免枚举用户。
 - 生产环境 Cookie 名为 `__Host-aisteriod_session`，开发环境为 `aisteriod_session`；属性为 `HttpOnly`、`SameSite=Lax`、`Path=/`，生产环境额外启用 `Secure`。默认有效期为 7 天。
 
@@ -30,7 +30,7 @@ Base URL：`http://127.0.0.1:3001/api/auth`。接口使用服务端 Session：�
 }
 ```
 
-可能错误：`400 VALIDATION_ERROR`（`details` 含字段错误）、`401 INVALID_CREDENTIALS`、`403 ACCOUNT_PENDING_APPROVAL`（密码正确但医生尚未审核）、`403 ORIGIN_NOT_ALLOWED`、`429 TOO_MANY_LOGIN_ATTEMPTS`。
+可能错误：`400 VALIDATION_ERROR`（`details` 含字段错误）、`401 INVALID_CREDENTIALS`、`403 ORIGIN_NOT_ALLOWED`、`429 TOO_MANY_LOGIN_ATTEMPTS`。
 
 ## POST `/register`
 
@@ -55,7 +55,7 @@ Base URL：`http://127.0.0.1:3001/api/auth`。接口使用服务端 Session：�
 }
 ```
 
-医生成功时返回 `202`，不设置 Cookie，并返回 `user.status: "PENDING"` 和 `registration.requiresApproval: true`。管理员审核通过前登录返回 `403 ACCOUNT_PENDING_APPROVAL`。用户名重复返回 `409 USERNAME_TAKEN`；传入 `ADMIN` 或额外字段会返回 `400 VALIDATION_ERROR`。
+医生与患者行为一致：成功时返回 `201`、设置 Session Cookie，`user.status` 为 `ACTIVE`，`registration.requiresApproval` 为 `false`（内部版已去除管理员审核步骤）。用户名重复返回 `409 USERNAME_TAKEN`；传入 `ADMIN` 或额外字段会返回 `400 VALIDATION_ERROR`。
 
 ## GET `/me`
 
@@ -70,13 +70,6 @@ Base URL：`http://127.0.0.1:3001/api/auth`。接口使用服务端 Session：�
 ## POST `/logout-all`
 
 需要有效 Session。撤销当前用户的全部未撤销 Session，并清除本次请求的 Cookie。成功返回 `204 No Content`；未登录返回 `401 AUTHENTICATION_REQUIRED`；来源不允许返回 `403 ORIGIN_NOT_ALLOWED`。
-
-## 管理员审核医生
-
-以下接口都需要已登录的 `ADMIN` 账号；其他角色返回 `403 ROLE_REQUIRED`。
-
-- `GET /admin/doctor-registrations`：返回所有状态为 `PENDING` 的医生账号，格式为 `{ "users": [...] }`。
-- `POST /admin/doctor-registrations/:userId/approve`：审核并激活医生，返回 `{ "user": { "role": "DOCTOR", "status": "ACTIVE" } }`。这是写操作，必须带允许的 `Origin`。
 
 ## 前端调用示例
 

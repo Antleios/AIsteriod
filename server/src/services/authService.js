@@ -10,7 +10,6 @@ import {
   hashSessionToken,
 } from '../security/sessionToken.js'
 
-const PENDING_STATUS = USER_STATUSES[0]
 const ACTIVE_STATUS = USER_STATUSES[1]
 const dummyPasswordHash = hashPassword('not-a-real-aisteriod-password')
 
@@ -72,38 +71,8 @@ export async function createUser(input) {
 }
 
 export async function registerUser(input) {
-  const data = registerUserSchema.parse(input)
-  const status = data.role === 'DOCTOR' ? PENDING_STATUS : ACTIVE_STATUS
-
-  return persistUser(data, status)
-}
-
-export async function listPendingDoctorRegistrations() {
-  const users = await prisma.user.findMany({
-    where: { role: 'DOCTOR', status: PENDING_STATUS },
-    orderBy: { createdAt: 'asc' },
-  })
-
-  return users.map(serializeUser)
-}
-
-export async function approveDoctorRegistration(userId) {
-  const user = await prisma.user.findUnique({ where: { id: userId } })
-
-  if (!user || user.role !== 'DOCTOR') {
-    throw new AuthError(404, 'DOCTOR_REGISTRATION_NOT_FOUND', '待审核医生不存在')
-  }
-  if (user.status === 'DISABLED') {
-    throw new AuthError(409, 'ACCOUNT_DISABLED', '已禁用账号不能审核通过')
-  }
-  if (user.status === ACTIVE_STATUS) return serializeUser(user)
-
-  return serializeUser(
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { status: ACTIVE_STATUS },
-    }),
-  )
+  // 内部版：医生注册与患者一致，直接激活并自动登录，无需管理员审核
+  return persistUser(registerUserSchema.parse(input))
 }
 
 export async function loginWithPassword({ username, password }) {
@@ -113,11 +82,9 @@ export async function loginWithPassword({ username, password }) {
   const passwordHash = user?.passwordHash ?? (await dummyPasswordHash)
   const passwordMatches = await verifyPassword(passwordHash, password)
 
-  if (!user || !passwordMatches || user.status === 'DISABLED') {
+  if (!user || !passwordMatches || user.status !== ACTIVE_STATUS) {
     return null
   }
-  if (user.status === PENDING_STATUS) return { pendingApproval: true }
-  if (user.status !== ACTIVE_STATUS) return null
 
   const now = new Date()
   const expiresAt = new Date(now.getTime() + authConfig.sessionTtlMs)

@@ -16,13 +16,12 @@ files.
 
 ## Register and Manage Accounts
 
-`POST /api/auth/register` accepts `PATIENT` and `DOCTOR` registrations. A
-patient becomes active and receives a Session Cookie immediately. A doctor is
-created with `PENDING` status and cannot log in or read patient data until an
-administrator approves the account. Public registration never accepts `ADMIN`.
+`POST /api/auth/register` accepts `PATIENT` and `DOCTOR` registrations. Both
+become active and receive a Session Cookie immediately — this internal build
+has no administrator approval step. Public registration never accepts `ADMIN`.
 
-Bootstrap the first administrator (and create controlled service accounts) from
-the backend command line:
+Create controlled accounts (including the first administrator) from the
+backend command line:
 
 ```bash
 NEW_USER_PASSWORD='replace-with-a-long-password' \
@@ -35,11 +34,7 @@ NEW_USER_PASSWORD='replace-with-a-long-password' \
 Allowed roles are `PATIENT`, `DOCTOR`, and `ADMIN`. Usernames are normalized to
 lowercase and may contain letters, numbers, `.`, `_`, and `-`.
 
-An authenticated administrator can review pending doctors with
-`GET /api/auth/admin/doctor-registrations`, then activate one using
-`POST /api/auth/admin/doctor-registrations/:userId/approve`. Only active
-doctors can be assigned to patients; training creation and self-service
-training reads are restricted to patients.
+Training creation and self-service training reads are restricted to patients.
 
 ## Authentication API
 

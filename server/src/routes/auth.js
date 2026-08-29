@@ -6,8 +6,6 @@ import {
   sessionCookieOptions,
 } from '../config/auth.js'
 import {
-  approveDoctorRegistration,
-  listPendingDoctorRegistrations,
   loginWithPassword,
   registerUser,
   revokeAllUserSessions,
@@ -21,7 +19,6 @@ import {
 import {
   loadAuthentication,
   requireAuthentication,
-  requireRole,
 } from '../middleware/auth.js'
 import { createOriginGuard } from '../middleware/originGuard.js'
 
@@ -101,16 +98,6 @@ export function createAuthRouter({ allowedOrigins }) {
 
       const result = await loginWithPassword(parsed.data)
 
-      if (result?.pendingApproval) {
-        res.status(403).json({
-          error: {
-            code: 'ACCOUNT_PENDING_APPROVAL',
-            message: '医生账号正在等待管理员审核',
-          },
-        })
-        return
-      }
-
       if (!result) {
         res.status(401).json({
           error: {
@@ -144,15 +131,7 @@ export function createAuthRouter({ allowedOrigins }) {
         return
       }
 
-      const user = await registerUser(parsed.data)
-      if (user.status === 'PENDING') {
-        res.status(202).json({
-          user,
-          registration: { requiresApproval: true },
-        })
-        return
-      }
-
+      await registerUser(parsed.data)
       const result = await loginWithPassword(parsed.data)
       res.cookie(
         authConfig.cookieName,
@@ -204,46 +183,6 @@ export function createAuthRouter({ allowedOrigins }) {
           clearSessionCookieOptions(),
         )
         res.sendStatus(204)
-      } catch (error) {
-        next(error)
-      }
-    },
-  )
-
-  router.get(
-    '/admin/doctor-registrations',
-    loadAuthentication,
-    requireAuthentication,
-    requireRole('ADMIN'),
-    async (req, res, next) => {
-      try {
-        res.json({ users: await listPendingDoctorRegistrations() })
-      } catch (error) {
-        next(error)
-      }
-    },
-  )
-
-  router.post(
-    '/admin/doctor-registrations/:userId/approve',
-    originGuard,
-    loadAuthentication,
-    requireAuthentication,
-    requireRole('ADMIN'),
-    async (req, res, next) => {
-      try {
-        const userId = Number(req.params.userId)
-        if (!Number.isInteger(userId) || userId <= 0) {
-          res.status(400).json({
-            error: {
-              code: 'VALIDATION_ERROR',
-              message: '医生用户 ID 无效',
-            },
-          })
-          return
-        }
-
-        res.json({ user: await approveDoctorRegistration(userId) })
       } catch (error) {
         next(error)
       }

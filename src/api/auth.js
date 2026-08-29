@@ -44,7 +44,7 @@ export async function loginWithPassword({ account, password }) {
   return data.user
 }
 
-/** 注册 → POST /api/auth/register（患者成功即自动登录，后端已写入会话 Cookie） */
+/** 注册 → POST /api/auth/register（患者/医生成功即自动登录，后端已写入会话 Cookie） */
 export async function register({
   username,
   password,
