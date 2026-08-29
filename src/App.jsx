@@ -6,6 +6,9 @@ import AIChat from './pages/AIChat.jsx'
 import EmojiGame from './pages/EmojiGame.jsx'
 import ColorLineGame from './pages/ColorLineGame.jsx'
 import ObjectNamingGame from './pages/ObjectNamingGame.jsx'
+import Doctor from './pages/Doctor.jsx'
+import DoctorUsers from './pages/DoctorUsers.jsx'
+import DoctorTraining from './pages/DoctorTraining.jsx'
 
 function App() {
   return (
@@ -18,6 +21,9 @@ function App() {
         <Route path="/emoji-game" element={<EmojiGame />} />
         <Route path="/color-game" element={<ColorLineGame />} />
         <Route path="/object-game" element={<ObjectNamingGame />} />
+        <Route path="/doctor" element={<Doctor />} />
+        <Route path="/doctor/users" element={<DoctorUsers />} />
+        <Route path="/doctor/training" element={<DoctorTraining />} />
       </Routes>
     </BrowserRouter>
   )

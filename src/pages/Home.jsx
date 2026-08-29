@@ -10,6 +10,7 @@ import doctorIcon from '../assets/doctor.jpg'
 function Home() {
   const navigate = useNavigate()
   const [loginOpen, setLoginOpen] = useState(false)
+  const [doctorLoginOpen, setDoctorLoginOpen] = useState(false)
 
   const handlePatientClick = async () => {
     const user = await fetchCurrentUser()
@@ -17,6 +18,15 @@ function Home() {
       navigate('/patient')
     } else {
       setLoginOpen(true)
+    }
+  }
+
+  const handleDoctorClick = async () => {
+    const user = await fetchCurrentUser()
+    if (user) {
+      navigate('/doctor')
+    } else {
+      setDoctorLoginOpen(true)
     }
   }
 
@@ -108,7 +118,10 @@ function Home() {
             <div className="mt-8" />
 
             {/* Button */}
-            <button className="flex w-full items-center gap-3 rounded-xl border border-gray-100 bg-white/80 px-4 py-3 text-left shadow-sm transition-all duration-300 hover:border-[#3B82F6]/30 hover:shadow-[0_0_20px_rgba(59,130,246,0.25)]">
+            <button
+              onClick={handleDoctorClick}
+              className="flex w-full items-center gap-3 rounded-xl border border-gray-100 bg-white/80 px-4 py-3 text-left shadow-sm transition-all duration-300 hover:border-[#3B82F6]/30 hover:shadow-[0_0_20px_rgba(59,130,246,0.25)]"
+            >
               <img
                 src={doctorIcon}
                 alt="医生端"
@@ -198,6 +211,14 @@ function Home() {
         open={loginOpen}
         onClose={() => setLoginOpen(false)}
         onSuccess={() => navigate('/patient')}
+      />
+
+      {/* 医生端登录卡片 */}
+      <LoginModal
+        open={doctorLoginOpen}
+        onClose={() => setDoctorLoginOpen(false)}
+        onSuccess={() => navigate('/doctor')}
+        role="DOCTOR"
       />
     </div>
   )
