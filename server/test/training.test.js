@@ -70,6 +70,39 @@ describe('training session API', () => {
     )
   })
 
+  it('stores the AI chat greeting as an idempotent assistant turn', async () => {
+    await addPatient()
+    const cookie = await login()
+    const created = await request(app)
+      .post('/api/training/sessions')
+      .set('Cookie', cookie)
+      .send({})
+    const sessionId = created.body.session.id
+    const body = {
+      clientRequestId: 'chat-greeting-v1',
+      trigger: 'CHAT_START',
+      context: 'CHAT',
+    }
+
+    const greeting = await request(app)
+      .post(`/api/ai/sessions/${sessionId}/interactions`)
+      .set('Cookie', cookie)
+      .send(body)
+    const retry = await request(app)
+      .post(`/api/ai/sessions/${sessionId}/interactions`)
+      .set('Cookie', cookie)
+      .send(body)
+
+    assert.equal(greeting.status, 201)
+    assert.match(greeting.body.interaction.reply, /小星/)
+    assert.equal(retry.body.interaction.id, greeting.body.interaction.id)
+    const turns = await prisma.conversationTurn.findMany({ where: { sessionId } })
+    assert.equal(turns.length, 1)
+    assert.equal(turns[0].role, 'ASSISTANT')
+    assert.equal(turns[0].content, greeting.body.interaction.reply)
+    assert.equal(Number.isInteger(turns[0].responseLatencyMs), true)
+  })
+
   it('stores a completed session memory and injects its snapshot into the next session', async () => {
     await addPatient()
     const cookie = await login()

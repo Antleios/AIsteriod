@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 const interactionTriggers = [
+  'CHAT_START',
   'GAME_START',
   'MULTIPLE_WRONG',
   'LONG_IDLE',

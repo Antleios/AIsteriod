@@ -172,6 +172,7 @@ export async function createSessionInteraction(user, sessionId, input) {
   })
 
   try {
+    const generationStartedAt = Date.now()
     const llmInput = createPatientInteractionInput({
       trigger: input.trigger,
       context: input.context,
@@ -204,6 +205,7 @@ export async function createSessionInteraction(user, sessionId, input) {
         context: input.context,
         content: generated.output.reply,
         inputMethod: 'SYSTEM',
+        responseLatencyMs: Date.now() - generationStartedAt,
         isUserInitiated: false,
         metadataJson: json({
           aiInteractionId: interaction.id,

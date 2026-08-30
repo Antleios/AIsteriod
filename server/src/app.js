@@ -5,6 +5,7 @@ import { createAiRouter } from './routes/ai.js'
 import gamesRouter from './routes/games.js'
 import healthRouter from './routes/health.js'
 import { createAuthRouter } from './routes/auth.js'
+import { createDoctorDashboardRouter } from './routes/doctorDashboard.js'
 import { createTrainingRouter } from './routes/training.js'
 
 function getAllowedOrigins() {
@@ -60,6 +61,7 @@ export function createApp() {
   app.use('/api/games', gamesRouter)
   app.use('/api/ai', createAiRouter({ allowedOrigins }))
   app.use('/api/training', createTrainingRouter({ allowedOrigins }))
+  app.use('/api/doctor', createDoctorDashboardRouter({ allowedOrigins }))
 
   app.use((req, res) => {
     void req

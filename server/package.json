@@ -9,6 +9,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
+    "db:seed:demo": "node prisma/seedDemo.js",
+    "db:seed:demo:clean": "node prisma/cleanDemo.js",
     "user:create": "node scripts/create-user.js",
     "test": "node scripts/run-tests.js"
   },

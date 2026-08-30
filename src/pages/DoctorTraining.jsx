@@ -1,15 +1,6 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import DoctorHeader from '../components/DoctorHeader.jsx'
-
-// 训练数据 —— 当前为前端 mock 数据，后端接入后替换为真实接口
-const records = [
-  { id: 1, patient: '张小明', game: '物品命名', score: 85, accuracy: 85, duration: '12 分钟', time: '今天 09:20' },
-  { id: 2, patient: '王小雅', game: '颜色连线', score: 92, accuracy: 92, duration: '8 分钟', time: '今天 10:05' },
-  { id: 3, patient: '陈一诺', game: '物品命名', score: 71, accuracy: 71, duration: '15 分钟', time: '昨天 16:40' },
-  { id: 4, patient: '刘子涵', game: '表情匹配', score: 88, accuracy: 88, duration: '10 分钟', time: '昨天 14:12' },
-  { id: 5, patient: '李浩浩', game: '表情匹配', score: 78, accuracy: 78, duration: '9 分钟', time: '前天 11:30' },
-  { id: 6, patient: '赵天佑', game: '颜色连线', score: 64, accuracy: 64, duration: '13 分钟', time: '前天 09:55' },
-]
+import { fetchDoctorTrainingRecords } from '../api/doctor.js'
 
 function accuracyColor(accuracy) {
   if (accuracy >= 85) return 'bg-emerald-500'
@@ -17,82 +8,181 @@ function accuracyColor(accuracy) {
   return 'bg-orange-400'
 }
 
+function formatDuration(durationMs) {
+  if (!Number.isFinite(durationMs)) return '--'
+  if (durationMs < 60_000) return `${Math.max(1, Math.round(durationMs / 1_000))} 秒`
+  return `${Math.round(durationMs / 60_000)} 分钟`
+}
+
+function formatTime(value) {
+  if (!value) return '--'
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
+function statusLabel(status) {
+  if (status === 'COMPLETED') return '已完成'
+  if (status === 'ACTIVE') return '训练中'
+  return '已结束'
+}
+
 function DoctorTraining() {
   const [keyword, setKeyword] = useState('')
-  const filtered = records.filter(
-    (r) => r.patient.includes(keyword.trim()) || r.game.includes(keyword.trim()),
-  )
+  const [records, setRecords] = useState([])
+  const [page, setPage] = useState({ nextCursor: null })
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError] = useState('')
+  const requestRef = useRef(0)
+
+  const loadFirstPage = useCallback(async (query, quiet = false) => {
+    const requestId = ++requestRef.current
+    if (!quiet) setLoading(true)
+    try {
+      const data = await fetchDoctorTrainingRecords({ q: query || undefined })
+      if (requestId !== requestRef.current) return
+      setRecords(data.records)
+      setPage(data.page)
+      setError('')
+    } catch (requestError) {
+      if (requestId === requestRef.current) {
+        setError(requestError.message || '训练数据读取失败')
+      }
+    } finally {
+      if (requestId === requestRef.current && !quiet) setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => loadFirstPage(keyword.trim()), 250)
+    return () => window.clearTimeout(timer)
+  }, [keyword, loadFirstPage])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => loadFirstPage(keyword.trim(), true), 15_000)
+    return () => window.clearInterval(timer)
+  }, [keyword, loadFirstPage])
+
+  const loadMore = async () => {
+    if (!page.nextCursor || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const data = await fetchDoctorTrainingRecords({
+        cursor: page.nextCursor,
+        q: keyword.trim() || undefined,
+      })
+      setRecords((current) => [...current, ...data.records])
+      setPage(data.page)
+      setError('')
+    } catch (requestError) {
+      setError(requestError.message || '更多训练数据读取失败')
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   return (
     <div className="relative flex min-h-screen flex-col bg-gradient-to-br from-[#EAF4FF] via-white to-[#EAF4FF]/60">
       <DoctorHeader />
-
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-6 pb-16 pt-6">
         <h1 className="text-2xl font-bold text-[#1E3A5F]">训练数据</h1>
-        <p className="mt-1 text-sm text-gray-400">
-          共 {filtered.length} 条记录（前端 mock 数据，后端待接入）
-        </p>
+        <p className="mt-1 text-sm text-gray-400">患者答题后自动写入，页面每 15 秒更新</p>
+        {error && (
+          <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-500">
+            {error}
+          </p>
+        )}
 
-        {/* 搜索 */}
-        <div className="mt-6 flex items-center gap-2 rounded-2xl border border-gray-100 bg-white/80 px-4 py-2.5 shadow-sm focus-within:border-[#3B82F6]/40 focus-within:ring-2 focus-within:ring-[#3B82F6]/15">
-          <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+        <div className="mt-6 flex items-center gap-2 rounded-2xl border border-gray-100 bg-white/80 px-4 py-2.5 shadow-sm">
+          <span className="text-gray-400">⌕</span>
           <input
             value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="搜索患者或训练游戏…"
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="搜索患者姓名或训练游戏…"
             className="flex-1 bg-transparent text-sm text-[#1E3A5F] outline-none placeholder:text-gray-400"
           />
         </div>
 
-        {/* 训练记录表格 */}
-        <div className="mt-5 overflow-hidden rounded-2xl border border-gray-100 bg-white/80 shadow-sm">
-          <table className="w-full text-left text-sm">
+        <div className="mt-5 overflow-x-auto rounded-2xl border border-gray-100 bg-white/80 shadow-sm">
+          <table className="w-full min-w-[760px] text-left text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-[#F7FAFF] text-xs text-gray-400">
                 <th className="px-5 py-3 font-medium">患者</th>
                 <th className="px-5 py-3 font-medium">训练游戏</th>
-                <th className="px-5 py-3 font-medium">得分</th>
+                <th className="px-5 py-3 font-medium">状态</th>
                 <th className="px-5 py-3 font-medium">正确率</th>
+                <th className="px-5 py-3 font-medium">正确/作答</th>
                 <th className="px-5 py-3 font-medium">时长</th>
-                <th className="px-5 py-3 font-medium">时间</th>
+                <th className="px-5 py-3 font-medium">开始时间</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => (
-                <tr
-                  key={r.id}
-                  className="border-b border-gray-50 transition-colors last:border-0 hover:bg-[#F7FAFF]/70"
-                >
-                  <td className="px-5 py-3 font-medium text-[#1E3A5F]">{r.patient}</td>
-                  <td className="px-5 py-3 text-gray-500">{r.game}</td>
-                  <td className="px-5 py-3 font-semibold text-[#1E3A5F]">{r.score}</td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-gray-100">
-                        <div
-                          className={`h-full rounded-full ${accuracyColor(r.accuracy)}`}
-                          style={{ width: `${r.accuracy}%` }}
-                        />
+              {records.map((record) => {
+                const accuracy = record.accuracy
+                return (
+                  <tr
+                    key={record.id}
+                    className="border-b border-gray-50 last:border-0 hover:bg-[#F7FAFF]/70"
+                  >
+                    <td className="px-5 py-3 font-medium text-[#1E3A5F]">
+                      {record.patient.displayName}
+                    </td>
+                    <td className="px-5 py-3 text-gray-500">{record.gameTitle}</td>
+                    <td className="px-5 py-3 text-gray-500">{statusLabel(record.status)}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-20 overflow-hidden rounded-full bg-gray-100">
+                          <div
+                            className={`h-full rounded-full ${accuracyColor(accuracy ?? 0)}`}
+                            style={{ width: `${accuracy ?? 0}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {accuracy == null ? '--' : `${accuracy}%`}
+                        </span>
                       </div>
-                      <span className="text-xs text-gray-500">{r.accuracy}%</span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3 text-gray-500">{r.duration}</td>
-                  <td className="px-5 py-3 text-gray-500">{r.time}</td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
+                    </td>
+                    <td className="px-5 py-3 text-gray-500">
+                      {record.correctCount}/{record.totalAttempts}
+                    </td>
+                    <td className="px-5 py-3 text-gray-500">
+                      {formatDuration(record.durationMs)}
+                    </td>
+                    <td className="px-5 py-3 text-gray-500">{formatTime(record.startedAt)}</td>
+                  </tr>
+                )
+              })}
+              {!loading && records.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-sm text-gray-400">
-                    没有找到匹配的训练记录
+                  <td colSpan={7} className="px-5 py-10 text-center text-gray-400">
+                    暂无训练记录
+                  </td>
+                </tr>
+              )}
+              {loading && (
+                <tr>
+                  <td colSpan={7} className="px-5 py-10 text-center text-gray-400">
+                    正在读取训练记录…
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+        {page.nextCursor && (
+          <button
+            type="button"
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="mx-auto mt-5 rounded-full bg-white px-5 py-2 text-sm text-[#3B82F6] shadow-sm disabled:opacity-50"
+          >
+            {loadingMore ? '读取中…' : '加载更多'}
+          </button>
+        )}
       </main>
     </div>
   )

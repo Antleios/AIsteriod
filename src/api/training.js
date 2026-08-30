@@ -2,6 +2,8 @@ import { apiGet, apiPost } from './client.js'
 import { fetchCurrentUser } from './auth.js'
 
 const ACTIVE_SESSION_KEY = 'aisteriod.activeTrainingSession.v1'
+let pendingSessionPromise = null
+const pendingAiRequests = new Map()
 
 function createClientId(prefix) {
   const random = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)
@@ -81,18 +83,28 @@ export async function getActiveTrainingSession() {
 
 /** Restore the patient's active visit, or create one only when an activity starts. */
 export async function ensureTrainingSession(metadata = {}) {
-  const user = await getPatient()
-  if (!user) return null
+  if (pendingSessionPromise) return pendingSessionPromise
 
-  const active = await findActiveTrainingSession(user)
-  if (active) return active
+  pendingSessionPromise = (async () => {
+    const user = await getPatient()
+    if (!user) return null
 
-  const { session } = await apiPost('/api/training/sessions', {
-    metadata: { source: 'web', ...metadata },
-  })
-  const created = { userId: user.id, sessionId: session.id }
-  storeSession(created)
-  return created
+    const active = await findActiveTrainingSession(user)
+    if (active) return active
+
+    const { session } = await apiPost('/api/training/sessions', {
+      metadata: { source: 'web', ...metadata },
+    })
+    const created = { userId: user.id, sessionId: session.id }
+    storeSession(created)
+    return created
+  })()
+
+  try {
+    return await pendingSessionPromise
+  } finally {
+    pendingSessionPromise = null
+  }
 }
 
 async function getExistingSession() {
@@ -153,6 +165,7 @@ export async function recordTrainingEvents(events) {
 }
 
 export async function requestSessionAiReply({
+  clientRequestId,
   userText,
   inputMethod = 'TEXT',
   context = 'CHAT',
@@ -162,10 +175,14 @@ export async function requestSessionAiReply({
 }) {
   const active = await ensureTrainingSession({ entry: 'ai-chat' })
   if (!active) return null
-  const { interaction } = await apiPost(
+  const requestId = clientRequestId ?? createClientId('ai')
+  const requestKey = `${active.sessionId}:${requestId}`
+  if (pendingAiRequests.has(requestKey)) return pendingAiRequests.get(requestKey)
+
+  const pending = apiPost(
     `/api/ai/sessions/${active.sessionId}/interactions`,
     {
-      clientRequestId: createClientId('ai'),
+      clientRequestId: requestId,
       userText,
       inputMethod,
       context,
@@ -173,8 +190,14 @@ export async function requestSessionAiReply({
       trigger,
       gameState,
     },
-  )
-  return interaction
+  ).then(({ interaction }) => interaction)
+  pendingAiRequests.set(requestKey, pending)
+
+  try {
+    return await pending
+  } finally {
+    pendingAiRequests.delete(requestKey)
+  }
 }
 
 export async function finishTrainingSession({ reason = 'USER_QUIT', gameRunId } = {}) {

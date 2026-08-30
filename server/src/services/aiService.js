@@ -87,6 +87,12 @@ function createDeterministicSessionConversationMemory(input) {
 }
 
 function deterministicPatientReply({ interaction, user }) {
+  if (interaction.trigger === 'CHAT_START') {
+    return {
+      reply: '你好，我是小星！我看到你了，想聊点什么呢？',
+      emotion: 'encouraging',
+    }
+  }
   if (interaction.trigger === 'LONG_IDLE') {
     return { reply: '我们可以慢慢看，不着急。', emotion: 'calm' }
   }

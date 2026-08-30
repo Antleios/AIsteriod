@@ -56,6 +56,15 @@ separate durable session model. See [SESSION_README.md](SESSION_README.md) for
 the lifecycle, authenticated API flow, question snapshots, provider settings,
 and privacy boundaries.
 
+## Demo Data
+
+Use `npm run db:seed:demo` to create the fictional doctor dashboard dataset and
+`npm run db:seed:demo:clean` to remove only its fixed demo accounts and related
+records. The normal `npm run db:seed` command updates game banks but does not
+remove demo users. See [DEMO_DATA.md](DEMO_DATA.md) for credentials, sample
+cases, cleanup scope, and the difference between seeding and resetting the
+database.
+
 ## Validation
 
 ```bash

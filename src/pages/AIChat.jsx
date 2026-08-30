@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import AiMascot from '../components/AiMascot.jsx'
 import { requestAIMessage } from '../api/ai.js'
 
-const GREETING = '你好，我是小星！我看到你了，想聊点什么呢？'
-
 function AIChat() {
   const navigate = useNavigate()
 
@@ -13,6 +11,7 @@ function AIChat() {
   const [mascotExpression, setMascotExpression] = useState('calm') // calm | loving
   const [listening, setListening] = useState(false) // 正在聆听用户说话
   const [voiceError, setVoiceError] = useState('')
+  const [chatReady, setChatReady] = useState(false)
 
   const handlingRef = useRef(false) // 等待 AI 回复期间锁住，禁止连续发送
   const loveTimeoutRef = useRef(null) // 「喜欢」表情的计时器
@@ -75,6 +74,7 @@ function AIChat() {
       } catch {
         handlingRef.current = false
         setMascotExpression('calm')
+        setVoiceError('消息已经保存，但 AI 暂时无法回复，请稍后再试')
       }
     },
     [conversation, speak, showLoving],
@@ -85,10 +85,31 @@ function AIChat() {
     sendMessageRef.current = sendMessage
   })
 
-  // 开场白：小星先打招呼
+  // 开场白也由会话接口生成和保存，确保医生端看到的记录与患者端一致。
   useEffect(() => {
-    setConversation([{ role: 'assistant', content: GREETING }])
-    speak(GREETING)
+    let cancelled = false
+    handlingRef.current = true
+    requestAIMessage([], {
+      trigger: 'CHAT_START',
+      clientRequestId: 'chat-greeting-v1',
+    })
+      .then(({ reply }) => {
+        if (cancelled) return
+        setConversation([{ role: 'assistant', content: reply }])
+        setChatReady(true)
+        setVoiceError('')
+        speak(reply, () => {
+          handlingRef.current = false
+        })
+      })
+      .catch((error) => {
+        if (cancelled) return
+        handlingRef.current = false
+        setVoiceError(error.message || 'AI 对话初始化失败，请稍后重试')
+      })
+    return () => {
+      cancelled = true
+    }
   }, [speak])
 
   // 新消息自动滚到底部
@@ -160,12 +181,13 @@ function AIChat() {
   }, [stopListening])
 
   const toggleListening = useCallback(() => {
+    if (!chatReady) return
     if (listening) {
       cancelListening()
     } else {
       startListening()
     }
-  }, [listening, cancelListening, startListening])
+  }, [chatReady, listening, cancelListening, startListening])
 
   // 卸载时清理
   useEffect(() => {
@@ -240,11 +262,14 @@ function AIChat() {
           <button
             type="button"
             onClick={toggleListening}
+            disabled={!chatReady}
             aria-label="语音输入"
             className={`flex h-16 w-16 items-center justify-center rounded-full shadow-lg transition-all duration-300 ${
               listening
                 ? 'scale-105 bg-red-100 text-red-500'
-                : 'bg-white text-[#3B82F6] hover:bg-[#3B82F6] hover:text-white'
+                : chatReady
+                  ? 'bg-white text-[#3B82F6] hover:bg-[#3B82F6] hover:text-white'
+                  : 'cursor-not-allowed bg-gray-100 text-gray-300'
             }`}
           >
             <svg
@@ -261,7 +286,7 @@ function AIChat() {
             </svg>
           </button>
           <span className={`text-xs ${listening ? 'text-red-500' : 'text-gray-400'}`}>
-            {listening ? '点击停止' : '点击说话'}
+            {listening ? '点击停止' : chatReady ? '点击说话' : '正在连接 AI…'}
           </span>
         </div>
 

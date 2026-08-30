@@ -59,10 +59,22 @@ model User {
   updatedAt            DateTime          @updatedAt
   authSessions         AuthSession[]
   trainingSessions     TrainingSession[]
+  patientProfile       PatientProfile?
   clinicianAssignments CareAssignment[]  @relation("ClinicianAssignments")
   patientAssignments   CareAssignment[]  @relation("PatientAssignments")
 
   @@index([role, status])
+}
+
+model PatientProfile {
+  userId      Int      @id
+  age         Int?
+  gender      String?
+  diagnosis   String?
+  caseNotes   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model AuthSession {
