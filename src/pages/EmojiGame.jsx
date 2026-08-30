@@ -11,6 +11,7 @@ import {
   startTrainingGame,
 } from '../api/training.js'
 import emotionSets from '../data/emotionEmojis.js'
+import { pickGameMessage } from '../data/gameMessages.js'
 
 const DAILY_GOAL = 8
 
@@ -37,6 +38,11 @@ function EmojiGame() {
   const [step, setStep] = useState('prompting') // prompting | waiting | correct | wrong
   const [selectedId, setSelectedId] = useState(null)
   const [feedbackText, setFeedbackText] = useState('')
+  const [promptMessage, setPromptMessage] = useState({ display: '', speech: '' })
+  const [waitingMessage, setWaitingMessage] = useState({ display: '', speech: '' })
+  const [completionMessage] = useState(() =>
+    pickGameMessage('emojiMatch', 'completion', { goal: DAILY_GOAL }),
+  )
   const [showReward, setShowReward] = useState(false)
   const [gameRunId, setGameRunId] = useState(null)
   const questionStartedAtRef = useRef(0)
@@ -119,8 +125,14 @@ function EmojiGame() {
     setSelectedId(null)
     setFeedbackText('')
     questionStartedAtRef.current = currentTime()
-    const msg = `请选出表示"${current.target}"的表情`
-    speak(msg)
+    const nextPrompt = pickGameMessage('emojiMatch', 'prompt', {
+      target: current.target,
+    })
+    setPromptMessage(nextPrompt)
+    setWaitingMessage(
+      pickGameMessage('emojiMatch', 'waiting', { target: current.target }),
+    )
+    speak(nextPrompt.speech)
     const timer = setTimeout(() => {
       setStep('waiting')
     }, 2000)
@@ -149,23 +161,32 @@ function EmojiGame() {
       if (current.questionId && !attempt) {
         setStep('waiting')
         setSelectedId(null)
-        setFeedbackText('训练记录暂不可用，请再试一次。')
+        setFeedbackText(
+          pickGameMessage('emojiMatch', 'recordError').display,
+        )
         return
       }
 
       if (attempt?.isCorrect ?? opt.correct) {
         setStep('correct')
-        setFeedbackText(`答对了！${opt.emoji} 就是${current.target}！太棒了！🎉`)
-        speak(`答对了！${opt.emoji} 就是${current.target}！太棒了！`)
+        const message = pickGameMessage('emojiMatch', 'correct', {
+          emoji: opt.emoji,
+          target: current.target,
+        })
+        setFeedbackText(message.display)
+        speak(message.speech)
         setScore((s) => s + 1)
         setShowReward(true)
         setTodayCompleted((n) => n + 1)
       } else {
         setStep('wrong')
-        setFeedbackText(
-          `${opt.emoji} 是"${opt.name}"哦，再想想哪个是"${current.target}"？🤔`,
-        )
-        speak(`再想想哪个是${current.target}`)
+        const message = pickGameMessage('emojiMatch', 'incorrect', {
+          emoji: opt.emoji,
+          optionName: opt.name,
+          target: current.target,
+        })
+        setFeedbackText(message.display)
+        speak(message.speech)
       }
     },
     [step, current, speak],
@@ -238,10 +259,10 @@ function EmojiGame() {
           <div className="mt-16 flex flex-col items-center gap-6">
             <div className="text-8xl">🎉</div>
             <h2 className="text-3xl font-bold text-[#3B82F6]">
-              太棒了！今日表情训练全部完成！
+              {completionMessage.display}
             </h2>
             <p className="text-gray-500">
-              今天认识了 {DAILY_GOAL} 种情绪表情，继续加油！
+              {completionMessage.detail}
             </p>
             <button
               onClick={() => leaveTraining('GAME_COMPLETE')}
@@ -254,11 +275,9 @@ function EmojiGame() {
           <>
             {/* Prompt Area */}
             <div className="mt-6 animate-fade-in rounded-3xl bg-white/70 px-10 py-6 shadow-lg backdrop-blur-sm">
-              <p className="text-center text-lg text-gray-500">请选出表示</p>
-              <p className="mt-1 text-center text-4xl font-bold text-[#3B82F6]">
-                "{current.target}"
+              <p className="text-center text-2xl font-bold text-[#3B82F6]">
+                {promptMessage.display || `请选出表示“${current.target}”的表情`}
               </p>
-              <p className="mt-1 text-center text-lg text-gray-500">的表情</p>
             </div>
 
             {/* Emoji Options */}
@@ -314,7 +333,16 @@ function EmojiGame() {
                       setStep('waiting')
                       setSelectedId(null)
                       setFeedbackText('')
-                      speak(`请选出表示${current.target}的表情`)
+                      const nextPrompt = pickGameMessage('emojiMatch', 'prompt', {
+                        target: current.target,
+                      })
+                      setPromptMessage(nextPrompt)
+                      setWaitingMessage(
+                        pickGameMessage('emojiMatch', 'waiting', {
+                          target: current.target,
+                        }),
+                      )
+                      speak(nextPrompt.speech)
                     }}
                     className="mt-3 rounded-xl bg-white px-5 py-2 text-sm shadow transition-all hover:bg-orange-50"
                   >
@@ -332,9 +360,9 @@ function EmojiGame() {
         <AIAvatar
           message={
             step === 'prompting'
-              ? `请选出表示"${current.target}"的表情`
+              ? promptMessage.display || `请选出表示“${current.target}”的表情`
               : step === 'waiting'
-                ? `点击你觉得是"${current.target}"的表情吧`
+                ? waitingMessage.display || `请选择“${current.target}”的表情`
                 : feedbackText
           }
           speaking={step === 'prompting'}

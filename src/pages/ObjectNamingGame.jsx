@@ -10,6 +10,7 @@ import {
   recordTrainingAttempt,
   startTrainingGame,
 } from '../api/training.js'
+import { pickGameMessage } from '../data/gameMessages.js'
 import objects from '../data/objects.js'
 
 const DAILY_GOAL = 10
@@ -42,6 +43,15 @@ function ObjectNamingGame() {
   const [todayCompleted, setTodayCompleted] = useState(0)
   const [step, setStep] = useState('prompting')
   const [feedbackText, setFeedbackText] = useState('')
+  const [promptMessage, setPromptMessage] = useState(() =>
+    pickGameMessage('objectNaming', 'prompt'),
+  )
+  const [listeningMessage, setListeningMessage] = useState(() =>
+    pickGameMessage('objectNaming', 'listening'),
+  )
+  const [completionMessage] = useState(() =>
+    pickGameMessage('objectNaming', 'completion', { goal: DAILY_GOAL }),
+  )
   const [showReward, setShowReward] = useState(false)
   const [gameRunId, setGameRunId] = useState(null)
   const [listening, setListening] = useState(false)
@@ -147,7 +157,9 @@ function ObjectNamingGame() {
           isCorrect = attempt?.isCorrect
         } catch {
           setStep('feedback_incorrect')
-          setFeedbackText('训练记录暂不可用，请再试一次。')
+          setFeedbackText(
+            pickGameMessage('objectNaming', 'recordError').display,
+          )
           return
         }
       } else {
@@ -157,20 +169,21 @@ function ObjectNamingGame() {
 
       if (isCorrect) {
         setStep('feedback_correct')
-        const answerName = current.name ? `这就是${current.name}！` : ''
-        setFeedbackText(`答对了！${answerName}太棒了！🎉`)
-        speak(`答对了！${answerName}太棒了！`)
+        const message = pickGameMessage('objectNaming', 'correct', {
+          answer: current.name,
+        })
+        setFeedbackText(message.display)
+        speak(message.speech)
         setScore((s) => s + 1)
         setShowReward(true)
         setTodayCompleted((n) => n + 1)
       } else {
         setStep('feedback_incorrect')
-        setFeedbackText(
-          current.name
-            ? `唔，你说的好像是"${cleaned}"，再仔细看看？🤔`
-            : '再仔细看看图片，想一想这是什么？🤔',
-        )
-        speak('再仔细看看图片，想一想这是什么？')
+        const message = pickGameMessage('objectNaming', 'incorrect', {
+          heard: cleaned,
+        })
+        setFeedbackText(message.display)
+        speak(message.speech)
       }
     },
     [current, speak, stopListening],
@@ -227,12 +240,14 @@ function ObjectNamingGame() {
 
   // 提问：等 AI 语音播报结束后再开始听，避免 AI 的声音被识别成答案
   const promptAndListen = useCallback(
-    (text) => {
+    (message) => {
       setStep('prompting')
       setFeedbackText('')
       setTranscript('')
       transcriptRef.current = ''
       setManualInput('')
+      setPromptMessage(message)
+      setListeningMessage(pickGameMessage('objectNaming', 'listening'))
       let started = false
       const beginListening = () => {
         if (started) return
@@ -245,7 +260,7 @@ function ObjectNamingGame() {
         beginListening()
         return
       }
-      speak(text, beginListening)
+      speak(message.speech, beginListening)
       // 兜底：个别浏览器 onend 不触发时也能开始听
       setTimeout(beginListening, 4000)
     },
@@ -257,7 +272,7 @@ function ObjectNamingGame() {
     questionStartedAtRef.current = currentTime()
     // 延迟一帧执行，避免在 effect 里同步 setState（react-hooks/set-state-in-effect）
     const timer = setTimeout(() => {
-      promptAndListen('请说出图片上的物品名称')
+      promptAndListen(pickGameMessage('objectNaming', 'prompt'))
     }, 0)
     return () => clearTimeout(timer)
   }, [currentIndex, current, promptAndListen])
@@ -279,7 +294,7 @@ function ObjectNamingGame() {
   }, [step, goNext])
 
   const handleRetry = () => {
-    promptAndListen('请说出图片上的物品名称')
+    promptAndListen(pickGameMessage('objectNaming', 'prompt'))
   }
 
   const handleManualSubmit = (e) => {
@@ -314,15 +329,20 @@ function ObjectNamingGame() {
         revealedAnswer = attempt.revealedAnswer
       } catch {
         setStep('feedback_incorrect')
-        setFeedbackText('答案暂不可用，请稍后再试。')
+        setFeedbackText(
+          pickGameMessage('objectNaming', 'revealError').display,
+        )
         return
       }
     }
 
     setStep('feedback_correct')
-    const answerName = `${revealedAnswer}哦！`
-    setFeedbackText(`这是${answerName}${current.emoji}`)
-    speak(`这是${answerName}`)
+    const message = pickGameMessage('objectNaming', 'reveal', {
+      answer: revealedAnswer,
+      emoji: current.emoji,
+    })
+    setFeedbackText(message.display)
+    speak(message.speech)
     setTodayCompleted((n) => n + 1)
   }
 
@@ -363,10 +383,10 @@ function ObjectNamingGame() {
           <div className="mt-16 flex flex-col items-center gap-6">
             <div className="text-8xl">🎉</div>
             <h2 className="text-3xl font-bold text-[#3B82F6]">
-              太棒了！今日训练全部完成！
+              {completionMessage.display}
             </h2>
             <p className="text-gray-500">
-              今天认识了 {DAILY_GOAL} 个物品，继续加油！
+              {completionMessage.detail}
             </p>
             <button
               onClick={() => leaveTraining('GAME_COMPLETE')}
@@ -391,9 +411,9 @@ function ObjectNamingGame() {
                 <AIAvatar
                   message={
                     step === 'prompting'
-                      ? '请说出图片上的物品名称'
+                      ? promptMessage.display
                       : step === 'listening'
-                        ? '我在听你说……'
+                        ? listeningMessage.display
                         : feedbackText
                   }
                   speaking={step === 'prompting' || step === 'listening'}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ProgressBar from '../components/ProgressBar.jsx'
 import AIAvatar from '../components/AIAvatar.jsx'
@@ -11,6 +11,7 @@ import {
   startTrainingGame,
 } from '../api/training.js'
 import { generateColorRound, colorPalette } from '../data/colorItems.js'
+import { pickGameMessage } from '../data/gameMessages.js'
 
 const DEFAULT_DAILY_GOAL = 5
 const DEFAULT_TOTAL_PAIRS = 5
@@ -36,6 +37,28 @@ function ColorLineGame() {
   const [matches, setMatches] = useState([])
   const [step, setStep] = useState('prompting')
   const [feedbackText, setFeedbackText] = useState('')
+  const [promptMessage, setPromptMessage] = useState(() =>
+    pickGameMessage('colorLine', 'prompt'),
+  )
+  const [playingMessage, setPlayingMessage] = useState(() =>
+    pickGameMessage('colorLine', 'playing'),
+  )
+  const [draggingMessage, setDraggingMessage] = useState(() =>
+    pickGameMessage('colorLine', 'dragging'),
+  )
+  const [tipMessage, setTipMessage] = useState(() =>
+    pickGameMessage('colorLine', 'tip'),
+  )
+  const completionMessage = useMemo(() =>
+    pickGameMessage('colorLine', 'completion', {
+      goal: roundConfig.dailyGoal,
+    }), [roundConfig.dailyGoal],
+  )
+  const roundCompletionMessage = useMemo(() =>
+    pickGameMessage('colorLine', 'roundCompletion', {
+      total: roundConfig.totalPairs,
+    }), [roundConfig.totalPairs],
+  )
   const [showReward, setShowReward] = useState(false)
   const [gameRunId, setGameRunId] = useState(null)
   const [roundKey, setRoundKey] = useState(0)
@@ -134,7 +157,12 @@ function ColorLineGame() {
   /* ── init round ── */
   useEffect(() => {
     setStep('prompting')
-    speak('请把相同颜色的物品连起来')
+    const nextPrompt = pickGameMessage('colorLine', 'prompt')
+    setPromptMessage(nextPrompt)
+    setPlayingMessage(pickGameMessage('colorLine', 'playing'))
+    setDraggingMessage(pickGameMessage('colorLine', 'dragging'))
+    setTipMessage(pickGameMessage('colorLine', 'tip'))
+    speak(nextPrompt.speech)
     const t = setTimeout(() => setStep('playing'), 2000)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -199,7 +227,9 @@ function ColorLineGame() {
           isCorrect = attempt?.isCorrect ?? false
         } catch {
           setStep('playing')
-          setFeedbackText('训练记录暂不可用，请重新连线。')
+          setFeedbackText(
+            pickGameMessage('colorLine', 'recordError').display,
+          )
           return
         }
       }
@@ -211,16 +241,20 @@ function ColorLineGame() {
           return next
         })
         setStep('correct')
-        setFeedbackText(`太棒了！${from.label}配对成功！🎉`)
-        speak(`${from.label}配对成功！`)
+        const message = pickGameMessage('colorLine', 'correct', {
+          label: from.label,
+        })
+        setFeedbackText(message.display)
+        speak(message.speech)
         setScore((s) => s + 1)
         setShowReward(true)
         setTodayCompleted((n) => n + 1)
       } else {
         // ❌ Wrong
         setStep('wrong')
-        setFeedbackText(`这两个颜色不一样哦，再试试吧🤔`)
-        speak('颜色不一样，再试试吧')
+        const message = pickGameMessage('colorLine', 'incorrect')
+        setFeedbackText(message.display)
+        speak(message.speech)
         setTimeout(() => {
           setStep('playing')
           setFeedbackText('')
@@ -250,7 +284,9 @@ function ColorLineGame() {
     dragStartPosRef.current = { x: e.clientX, y: e.clientY }
     pairStartedAtRef.current.set(item.id, currentTime())
     setDragPos({ x: e.clientX - r.left, y: e.clientY - r.top })
-    speak(`选中了${item.label}`)
+    speak(
+      pickGameMessage('colorLine', 'selected', { label: item.label }).speech,
+    )
   }
 
   /* ── auto-advance after correct ── */
@@ -315,8 +351,10 @@ function ColorLineGame() {
         {isAllDone ? (
           <div className="mt-16 flex flex-col items-center gap-6">
             <div className="text-8xl">🎉</div>
-            <h2 className="text-3xl font-bold text-[#3B82F6]">今日全部完成！</h2>
-            <p className="text-gray-500">今天完成了 {roundConfig.dailyGoal} 对颜色配对！</p>
+            <h2 className="text-3xl font-bold text-[#3B82F6]">
+              {completionMessage.display}
+            </h2>
+            <p className="text-gray-500">{completionMessage.detail}</p>
             <button onClick={() => leaveTraining('GAME_COMPLETE')}
               className="rounded-2xl bg-[#3B82F6] px-8 py-3 font-medium text-white shadow-lg transition-all hover:bg-[#2563EB]"
             >返回首页</button>
@@ -324,8 +362,10 @@ function ColorLineGame() {
         ) : step === 'complete' ? (
           <div className="mt-16 flex flex-col items-center gap-6">
             <div className="text-8xl">🎉</div>
-            <h2 className="text-3xl font-bold text-[#3B82F6]">全部配对成功！</h2>
-            <p className="text-gray-500">你成功匹配了所有 {roundConfig.totalPairs} 对！</p>
+            <h2 className="text-3xl font-bold text-[#3B82F6]">
+              {roundCompletionMessage.display}
+            </h2>
+            <p className="text-gray-500">{roundCompletionMessage.detail}</p>
             <button onClick={() => leaveTraining('GAME_COMPLETE')}
               className="rounded-2xl bg-[#3B82F6] px-8 py-3 font-medium text-white shadow-lg transition-all hover:bg-[#2563EB]"
             >结束训练</button>
@@ -426,11 +466,11 @@ function ColorLineGame() {
                 <AIAvatar
                   message={
                     step === 'prompting'
-                      ? '请把相同颜色的物品连起来'
+                      ? promptMessage.display
                       : dragging
-                        ? '拖到相同颜色的物品上'
+                        ? draggingMessage.display
                         : step === 'playing'
-                          ? '按住一个物品，拖到相同颜色的上面'
+                          ? playingMessage.display
                           : feedbackText
                   }
                   speaking={step === 'prompting'}
@@ -459,7 +499,7 @@ function ColorLineGame() {
 
             {step === 'playing' && !dragging && (
               <p className="mt-6 text-sm text-gray-400">
-                💡 按住一个彩色物品，拖到另一个相同颜色的物品上即可配对
+                {tipMessage.display}
               </p>
             )}
           </>
