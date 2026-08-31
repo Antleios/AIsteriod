@@ -1,4 +1,9 @@
 import { Router } from 'express'
+import { z } from 'zod'
+import { rateLimit } from 'express-rate-limit'
+import { synthesizeSpeech } from '../services/speechService.js'
+import { openSpeechStream } from '../services/speechStreamService.js'
+import { once } from 'node:events'
 import { loadAuthentication, requireAuthentication, requireRole } from '../middleware/auth.js'
 import { createOriginGuard } from '../middleware/originGuard.js'
 import { getAiChatResponse, isPatientInteractionProviderLive } from '../services/aiService.js'
@@ -27,10 +32,36 @@ export function createAiRouter({ allowedOrigins }) {
   const originGuard = createOriginGuard(allowedOrigins)
 
   router.use(loadAuthentication)
+  const patientLimit = rateLimit({ windowMs: 60_000, limit: 40, standardHeaders: 'draft-7', legacyHeaders: false,
+    keyGenerator: (req) => String(req.auth.user.id),
+    message: { error: { code: 'AI_RATE_LIMIT', message: '请求有些频繁，请稍等片刻再试' } },
+  })
   router.use((req, res, next) => {
     void req
     res.setHeader('Cache-Control', 'no-store')
     next()
+  })
+
+  router.post('/speech', originGuard, requireAuthentication, requireRole('PATIENT'), patientLimit, async (req, res, next) => {
+    const input = parseBody(z.object({ text: z.string().trim().min(1).max(500), stream: z.boolean().optional() }).strict(), res, req.body)
+    if (!input) return
+    const controller = new AbortController()
+    res.on('close', () => controller.abort())
+    try {
+      if (input.stream) {
+        const result = await openSpeechStream(input.text, controller.signal)
+        if (result.provider === 'browser') { res.json(result); return }
+        res.set({ 'Content-Type': 'audio/pcm;rate=24000;channels=1', 'Cache-Control': 'no-store, no-transform', 'X-Accel-Buffering': 'no', 'X-Speech-Cache': result.cache })
+        for await (const chunk of result.chunks) {
+          if (!res.write(chunk)) await once(res, 'drain', { signal: controller.signal })
+        }
+        res.end()
+        return
+      }
+      const result = await synthesizeSpeech(input.text)
+      if (result.audio) res.type(result.contentType).send(result.audio)
+      else res.json(result)
+    } catch (error) { if (res.headersSent) res.destroy(); else if (!controller.signal.aborted) next(error) }
   })
 
   // Compatibility endpoint for the existing chat page. It keeps { reply } and
@@ -75,6 +106,7 @@ export function createAiRouter({ allowedOrigins }) {
     originGuard,
     requireAuthentication,
     requireRole('PATIENT'),
+    patientLimit,
     async (req, res, next) => {
       try {
         const input = parseBody(sessionInteractionSchema, res, req.body)

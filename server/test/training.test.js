@@ -47,7 +47,7 @@ describe('training session API', () => {
     assert.ok(response.body.reply.length > 0)
     assert.equal(response.body.output.schemaVersion, 'patient-interaction-output.v1')
     assert.equal(response.body.output.reply, response.body.reply)
-    assert.equal(response.body.ai.prompt.version, 'patient-interaction-v1')
+    assert.equal(response.body.ai.prompt.version, 'patient-interaction-v2')
   })
 
   it('accepts patient replies up to 1000 characters', () => {
@@ -420,7 +420,7 @@ describe('training session API', () => {
       'patient-interaction-output.v1',
     )
     assert.equal(response.body.interaction.output.reply, response.body.interaction.reply)
-    assert.equal(response.body.interaction.prompt.version, 'patient-interaction-v1')
+    assert.equal(response.body.interaction.prompt.version, 'patient-interaction-v2')
 
     const retry = await request(app)
       .post(`/api/ai/sessions/${sessionId}/interactions`)

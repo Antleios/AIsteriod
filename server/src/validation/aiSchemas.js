@@ -51,6 +51,7 @@ export const sessionInteractionSchema = z
     trigger: z.enum(interactionTriggers),
     context: z.enum(contexts).default('CHAT'),
     gameRunId: z.string().cuid().optional(),
+    questionId: z.string().cuid().optional(),
     userText: z.string().trim().min(1).max(2_000).optional(),
     inputMethod: z.enum(['ASR', 'TEXT']).default('TEXT'),
     gameState: jsonRecordSchema.optional(),

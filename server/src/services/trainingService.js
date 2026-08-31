@@ -1,9 +1,11 @@
 import { randomInt } from 'node:crypto'
+import { matchesObjectAnswer } from '../../../shared/objectNaming.js'
 import prisma from '../db/prisma.js'
 import { buildEmojiMatchQuestions } from './gamesService.js'
 import {
   generateDoctorSummary,
   generateSessionConversationMemory,
+  judgeObjectUtterance,
 } from './aiService.js'
 import { createSessionConversationMemoryInput } from '../validation/aiSchemas.js'
 
@@ -293,6 +295,9 @@ async function createColorLineQuestions() {
 
 function isCorrectAnswer(question, answer) {
   const expected = parseJson(question.answerJson, {})
+  if (question.questionType === 'OBJECT_NAMING') {
+    return matchesObjectAnswer(answer, expected.acceptedAnswers ?? [])
+  }
   const normalized = normalizeAnswer(answer)
 
   if (Array.isArray(expected.acceptedAnswers)) {
@@ -502,6 +507,23 @@ export async function createGameRun(user, sessionId, { gameCode }) {
 
 export async function recordGameAttempt(user, sessionId, questionId, input) {
   assertPatient(user)
+  // Validate ownership before sending any question or conversation to the provider.
+  const owned = await getOwnedSession(user.id, sessionId)
+  if (!owned) throw new TrainingError(404, 'SESSION_NOT_FOUND', '训练会话不存在')
+  const snapshot = await prisma.gameRunQuestion.findFirst({ where: { id: questionId, gameRun: { sessionId } }, include: { gameRun: true } })
+  if (!snapshot) throw new TrainingError(404, 'QUESTION_NOT_FOUND', '训练题目不存在')
+  if (owned.status !== ACTIVE_SESSION) throw new TrainingError(409, 'SESSION_NOT_ACTIVE', '训练会话已经结束')
+  if (snapshot.gameRun.status !== ACTIVE_RUN) throw new TrainingError(409, 'GAME_RUN_NOT_ACTIVE', '本轮游戏已经结束')
+  if (snapshot.completedAt) throw new TrainingError(409, 'QUESTION_ALREADY_COMPLETED', '该题已经完成')
+  let judgment = null
+  if (snapshot.questionType === 'OBJECT_NAMING' && input.action !== 'REVEAL') {
+    const recent = await prisma.conversationTurn.findMany({ where: { sessionId }, orderBy: { sequence: 'desc' }, take: 10, select: { role: true, content: true } })
+    try {
+      judgment = await judgeObjectUtterance({ userText: input.answer, question: parseJson(snapshot.clientPayloadJson, {}), acceptedAnswers: parseJson(snapshot.answerJson, {}).acceptedAnswers, recentConversation: recent.reverse() })
+    } catch {
+      throw new TrainingError(502, 'OBJECT_JUDGMENT_FAILED', '小星暂时没能理解这句话，请稍后重试；本次不计对错')
+    }
+  }
   const now = new Date()
   const result = await prisma.$transaction(async (tx) => {
     await claimActiveSession(tx, user.id, sessionId)
@@ -525,7 +547,15 @@ export async function recordGameAttempt(user, sessionId, questionId, input) {
       throw new TrainingError(400, 'REVEAL_NOT_SUPPORTED', '当前题型不支持显示答案')
     }
 
-    const isCorrect = !isRevealed && isCorrectAnswer(question, input.answer)
+    if (judgment) {
+      const sequence = await tx.trainingSession.update({ where: { id: sessionId }, data: { nextConversationSequence: { increment: 2 } }, select: { nextConversationSequence: true } })
+      await tx.conversationTurn.createMany({ data: [
+        { sessionId, sequence: sequence.nextConversationSequence - 2, role: 'USER', context: 'OBJECT_NAMING', content: input.answer, inputMethod: input.inputMethod ?? 'TEXT', isUserInitiated: judgment.intent !== 'answer' },
+        { sessionId, sequence: sequence.nextConversationSequence - 1, role: 'ASSISTANT', context: 'OBJECT_NAMING', content: judgment.reply, inputMethod: 'SYSTEM', metadataJson: json({ provider: 'qwen', intent: judgment.intent, isCorrect: judgment.isCorrect }) },
+      ] })
+      if (judgment.intent !== 'answer') return { conversation: true, feedback: judgment.reply }
+    }
+    const isCorrect = !isRevealed && (judgment ? judgment.isCorrect : isCorrectAnswer(question, input.answer))
     let revealedAnswer = null
     if (isRevealed) {
       revealedAnswer = getSnapshotDisplayAnswer(question)
@@ -569,11 +599,13 @@ export async function recordGameAttempt(user, sessionId, questionId, input) {
       }
     }
 
+    let multipleWrong = false
     if (!isCorrect && !isRevealed) {
       const wrongAttempts = await tx.gameAttempt.count({
         where: { gameRunQuestionId: question.id, outcome: 'WRONG' },
       })
       if (wrongAttempts === 2) {
+        multipleWrong = true
         await tx.interactionEvent.create({
           data: {
             sessionId,
@@ -591,11 +623,13 @@ export async function recordGameAttempt(user, sessionId, questionId, input) {
       where: { id: question.gameRunId },
       select: { status: true, endedAt: true },
     })
-    return { attempt: created, question, run, isCorrect, isRevealed, revealedAnswer }
+    return { attempt: created, question, run, isCorrect, isRevealed, revealedAnswer, multipleWrong }
   })
 
+  if (result.conversation) return { outcome: 'CONVERSATION', isCorrect: null, feedback: result.feedback }
   return {
     id: result.attempt.id,
+    multipleWrong: result.multipleWrong,
     questionId,
     outcome: result.attempt.outcome,
     isCorrect: result.isCorrect,
@@ -607,7 +641,8 @@ export async function recordGameAttempt(user, sessionId, questionId, input) {
       status: result.run.status,
       endedAt: result.run.endedAt,
     },
-    feedback: result.isCorrect ? '对啦，我们继续。' : '没关系，再看看。',
+    feedback: judgment?.reply ?? (result.isCorrect ? '对啦，我们继续。' : '没关系，再看看。'),
+    ...(judgment ? { provider: 'qwen' } : {}),
   }
 }
 

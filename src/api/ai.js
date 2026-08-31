@@ -34,5 +34,5 @@ export async function requestAIMessage(messages, options = {}) {
     throw new Error('请先使用患者账号登录后再开始 AI 对话')
   }
 
-  return { reply: interaction.reply, emotion: interaction.emotion }
+  return { reply: interaction.reply, emotion: interaction.emotion, provider: interaction.provider, model: interaction.model }
 }

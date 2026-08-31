@@ -31,6 +31,7 @@ export const createGameRunSchema = z
 
 export const recordAttemptSchema = z
   .object({
+    inputMethod: z.enum(['ASR', 'TEXT']).optional(),
     answer: z.string().trim().max(200).nullable().optional(),
     action: z.enum(['ANSWER', 'REVEAL']).default('ANSWER'),
     responseTimeMs: z.number().int().min(0).max(3_600_000).optional(),

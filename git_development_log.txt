@@ -1,0 +1,478 @@
+﻿
+========================================
+鎻愪氦锛?e8c338
+鏃堕棿锛?026-08-31 12:22:20 +0800
+浣滆€咃細huan
+璇存槑锛歊emove BOM from Vercel config
+ vercel.json | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+
+========================================
+鎻愪氦锛歜b477d7
+鏃堕棿锛?026-08-31 11:48:03 +0800
+浣滆€咃細huan
+璇存槑锛欰dd Vercel routing configuration
+ vercel.json | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+
+========================================
+鎻愪氦锛歝c4f3b6
+鏃堕棿锛?026-08-30 23:15:10 +0800
+浣滆€咃細Ruixuan Yang
+璇存槑锛歠eat:娓告垙鐘舵€佸鏍峰寲鏂囨
+ src/data/gameMessages.js       | 341 +++++++++++++++++++++++++++++++++++++++++
+ src/pages/ColorLineGame.jsx    |  72 +++++++--
+ src/pages/EmojiGame.jsx        |  64 +++++---
+ src/pages/ObjectNamingGame.jsx |  64 +++++---
+ 4 files changed, 485 insertions(+), 56 deletions(-)
+
+
+========================================
+鎻愪氦锛?b56390
+鏃堕棿锛?026-08-30 21:44:55 +0800
+浣滆€咃細Ruixuan Yang
+璇存槑锛歠eat: 瀹屽杽鍖荤敓绔偅鑰呮暟鎹湅鏉夸笌浼氳瘽鍚屾
+ server/.env.example                                |   2 +
+ server/DEMO_DATA.md                                |  73 ++
+ server/README.md                                   |   9 +
+ server/package.json                                |   2 +
+ server/prisma/cleanDemo.js                         |  58 ++
+ .../migration.sql                                  |  11 +
+ server/prisma/schema.prisma                        |  12 +
+ server/prisma/seedDemo.js                          | 498 ++++++++++++
+ server/src/app.js                                  |   2 +
+ server/src/routes/doctorDashboard.js               | 159 ++++
+ server/src/services/aiInteractionService.js        |   2 +
+ server/src/services/aiService.js                   |   6 +
+ server/src/services/doctorDashboardService.js      | 902 +++++++++++++++++++++
+ server/src/validation/aiSchemas.js                 |   1 +
+ server/src/validation/doctorDashboardSchemas.js    |  73 ++
+ server/test/doctorDashboard.test.js                | 647 +++++++++++++++
+ server/test/training.test.js                       |  33 +
+ src/api/ai.js                                      |  59 +-
+ src/api/client.js                                  |  10 +
+ src/api/doctor.js                                  |  45 +
+ src/api/training.js                                |  51 +-
+ src/pages/AIChat.jsx                               |  41 +-
+ src/pages/Doctor.jsx                               | 148 ++--
+ src/pages/DoctorConversations.jsx                  | 424 +++++-----
+ src/pages/DoctorTraining.jsx                       | 196 +++--
+ src/pages/DoctorUsers.jsx                          | 511 +++++-------
+ 26 files changed, 3287 insertions(+), 688 deletions(-)
+
+
+========================================
+鎻愪氦锛歝53036a
+鏃堕棿锛?026-08-29 23:24:28 +0800
+浣滆€咃細Antleios
+璇存槑锛歠eat: 鍖荤敓绔柊澧炪€屽璇濇暟鎹€嶆ā鍧楋紙鎸夐渶鏌ョ湅鎮ｈ€?AI 瀹屾暣瀵硅瘽锛夛紝鏀瑰悕銆屾偅鑰呯梾鍘嗙鐞嗐€? src/App.jsx                       |   2 +
+ src/pages/Doctor.jsx              |  30 +++-
+ src/pages/DoctorConversations.jsx | 310 ++++++++++++++++++++++++++++++++++++++
+ src/pages/DoctorUsers.jsx         |   4 +-
+ 4 files changed, 342 insertions(+), 4 deletions(-)
+
+
+========================================
+鎻愪氦锛?841b80
+鏃堕棿锛?026-08-29 16:53:56 +0800
+浣滆€咃細Antleios
+璇存槑锛歠eat: 鍖荤敓绔棬鎴封€斺€旀偅鑰?鐢ㄦ埛绠＄悊锛堝鍒犳敼锛変笌璁粌鏁版嵁椤? src/App.jsx                     |   6 +
+ src/components/DoctorHeader.jsx |  73 ++++++++
+ src/pages/Doctor.jsx            | 136 ++++++++++++++
+ src/pages/DoctorTraining.jsx    | 101 ++++++++++
+ src/pages/DoctorUsers.jsx       | 398 ++++++++++++++++++++++++++++++++++++++++
+ src/pages/Home.jsx              |  23 ++-
+ 6 files changed, 736 insertions(+), 1 deletion(-)
+
+
+========================================
+鎻愪氦锛?239bc5
+鏃堕棿锛?026-08-29 16:53:51 +0800
+浣滆€咃細Antleios
+璇存槑锛歠eat: 绉婚櫎绠＄悊鍛樺鏍革紝鍖荤敓娉ㄥ唽鍗虫縺娲昏嚜鍔ㄧ櫥褰? server/AUTH_API.md                 | 13 ++------
+ server/README.md                   | 17 ++++------
+ server/src/routes/auth.js          | 63 +-------------------------------------
+ server/src/services/authService.js | 39 ++---------------------
+ server/test/auth.test.js           | 62 ++++++-------------------------------
+ src/api/auth.js                    |  2 +-
+ src/components/LoginModal.jsx      | 23 ++++++++++----
+ 7 files changed, 40 insertions(+), 179 deletions(-)
+
+
+========================================
+鎻愪氦锛?cf4ee5
+鏃堕棿锛?026-08-28 13:56:42 +0800
+浣滆€咃細Ruixuan Yang
+璇存槑锛歠ix:淇鐗╁搧鍛藉悕鍥哄畾鍥炵瓟
+ server/src/services/trainingService.js | 35 ++++++++++++++++++++++++++++++++--
+ server/test/training.test.js           | 10 ++++++++++
+ src/pages/ObjectNamingGame.jsx         | 10 +++++++---
+ 3 files changed, 50 insertions(+), 5 deletions(-)
+
+
+========================================
+鎻愪氦锛?6bb1cf
+鏃堕棿锛?026-08-27 22:05:55 +0800
+浣滆€咃細Ruixuan Yang
+璇存槑锛歠eat: 鎸佷箙鍖栨偅鑰呬細璇濆璇濊蹇? server/.env.example                                |  10 +-
+ .../migration.sql                                  |  21 +++
+ server/prisma/schema.prisma                        | 117 +++++++------
+ server/scripts/run-tests.js                        |   3 +
+ server/src/services/aiInteractionService.js        |  14 +-
+ server/src/services/aiPrompts.js                   |  34 +++-
+ server/src/services/aiService.js                   |  77 ++++++++-
+ server/src/services/trainingService.js             | 183 +++++++++++++++++----
+ server/src/validation/aiSchemas.js                 |  44 ++++-
+ server/test/training.test.js                       |  91 ++++++++++
+ 10 files changed, 499 insertions(+), 95 deletions(-)
+
+
+========================================
+鎻愪氦锛?283ee1
+鏃堕棿锛?026-08-27 17:04:14 +0800
+浣滆€咃細Ruixuan Yang
+璇存槑锛歠eat: 瀹屽杽璁粌浼氳瘽涓庣粨鏋勫寲 AI 浜や簰
+ server/.env.example                                |  12 +-
+ server/SESSION_README.md                           |  59 ++++-
+ .../migration.sql                                  |  25 ++
+ server/prisma/schema.prisma                        |  27 ++
+ server/scripts/run-tests.js                        |   1 +
+ server/src/app.js                                  |   8 +-
+ server/src/index.js                                |   1 +
+ server/src/routes/ai.js                            | 104 +++++++-
+ server/src/routes/training.js                      | 288 ++++++++++----------
+ server/src/services/aiInteractionService.js        | 227 ++++++++++++++++
+ server/src/services/aiPrompts.js                   |  78 ++++++
+ server/src/services/aiService.js                   | 242 +++++++++++------
+ server/src/services/trainingService.js             | 293 +++++++++++++--------
+ server/src/validation/aiSchemas.js                 | 121 +++++++++
+ server/src/validation/trainingSchemas.js           |  13 +-
+ server/test/training.test.js                       | 149 +++++++++++
+ src/api/ai.js                                      |  17 +-
+ src/api/auth.js                                    |   4 +-
+ src/api/client.js                                  |  34 ++-
+ src/api/training.js                                | 197 +++++++++++++-
+ src/hooks/useTrainingIdleTracker.js                |  38 +++
+ src/pages/AIChat.jsx                               |   6 +-
+ src/pages/ColorLineGame.jsx                        | 122 +++++++--
+ src/pages/EmojiGame.jsx                            |  91 ++++++-
+ src/pages/ObjectNamingGame.jsx                     | 137 ++++++++--
+ src/pages/PatientSelect.jsx                        |  56 +++-
+ 26 files changed, 1911 insertions(+), 439 deletions(-)
+
+
+========================================
+鎻愪氦锛?5c5f37
+鏃堕棿锛?026-08-27 14:52:13 +0800
+浣滆€咃細Antleios
+璇存槑锛歠eat: 鍓嶇鐧诲綍鎺ラ€氱湡瀹炲悗绔紙瀵嗙爜鐧诲綍+娉ㄥ唽锛夛紝鏇夸唬 mock 涓庣煭淇℃柟妗? server/package-lock.json      |   1 -
+ src/api/auth.js               | 116 ++++++++++++++++---------------
+ src/components/LoginModal.jsx | 157 +++++++++++++++++++++++-------------------
+ src/components/Navbar.jsx     |  31 ++++++---
+ src/pages/Home.jsx            |   7 +-
+ src/pages/PatientSelect.jsx   |  14 ++--
+ 6 files changed, 185 insertions(+), 141 deletions(-)
+
+
+========================================
+鎻愪氦锛?a2790e
+鏃堕棿锛?026-08-27 12:48:14 +0800
+浣滆€咃細Antleios
+璇存槑锛歠eat: 鎮ｈ€呯B绔欏紡鐧诲綍寮圭獥锛堝瘑鐮?鐭俊锛? 閫€鍑虹櫥褰曞叆鍙? src/api/auth.js               |  72 +++++++++++++
+ src/components/LoginModal.jsx | 245 ++++++++++++++++++++++++++++++++++++++++++
+ src/components/Navbar.jsx     |  45 ++++++--
+ src/index.css                 |  17 +++
+ src/pages/Home.jsx            |  22 +++-
+ src/pages/PatientSelect.jsx   |  25 ++++-
+ 6 files changed, 418 insertions(+), 8 deletions(-)
+
+
+========================================
+鎻愪氦锛?a206ee
+鏃堕棿锛?026-08-25 21:51:18 +0800
+浣滆€咃細Ruixuan Yang
+璇存槑锛歠eat:娉ㄥ唽鍔熻兘锛屽尯鍒嗘偅鑰呭尰鐢? .gitignore                             |   1 +
+ server/.env.example                    |   4 ++
+ server/AUTH_API.md                     |  92 ++++++++++++++++++++++++
+ server/README.md                       |  18 ++++-
+ server/package-lock.json               |   1 +
+ server/package.json                    |   2 +
+ server/scripts/create-user.js          |   8 +--
+ server/scripts/run-tests.js            |   1 +
+ server/src/config/auth.js              |   7 +-
+ server/src/middleware/auth.js          |  21 ++++++
+ server/src/routes/auth.js              | 125 +++++++++++++++++++++++++++++++--
+ server/src/services/authService.js     |  95 +++++++++++++++++++++----
+ server/src/services/trainingService.js |  12 +++-
+ server/src/validation/authSchemas.js   |  14 ++++
+ server/test/auth.test.js               | 125 +++++++++++++++++++++++++++++++++
+ server/test/training.test.js           |   5 ++
+ 16 files changed, 500 insertions(+), 31 deletions(-)
+
+
+========================================
+鎻愪氦锛?23e2a7
+鏃堕棿锛?026-08-25 21:30:17 +0800
+浣滆€咃細Ruixuan Yang
+璇存槑锛歠eat: 瀹屽杽鐧诲綍閴存潈涓庤缁?Session 鍚庣
+ server/.env.example                                |   6 +
+ server/README.md                                   |  60 ++
+ server/SESSION_README.md                           |  68 ++
+ server/package-lock.json                           | 461 ++++++++++++-
+ server/package.json                                |  13 +-
+ .../20260815000000_add_user_auth/migration.sql     |  39 ++
+ .../migration.sql                                  | 123 ++++
+ server/prisma/schema.prisma                        | 171 +++++
+ server/scripts/create-user.js                      |  59 ++
+ server/scripts/run-tests.js                        |  47 ++
+ server/src/app.js                                  |  95 +++
+ server/src/config/auth.js                          |  55 ++
+ server/src/index.js                                |  49 +-
+ server/src/middleware/auth.js                      |  29 +
+ server/src/middleware/originGuard.js               |  25 +
+ server/src/routes/auth.js                          | 141 ++++
+ server/src/routes/training.js                      | 181 +++++
+ server/src/security/password.js                    |  16 +
+ server/src/security/sessionToken.js                |  14 +
+ server/src/services/aiService.js                   | 118 ++++
+ server/src/services/authService.js                 | 130 ++++
+ server/src/services/trainingService.js             | 767 +++++++++++++++++++++
+ server/src/validation/authSchemas.js               |  45 ++
+ server/src/validation/trainingSchemas.js           |  86 +++
+ server/test/auth.test.js                           | 223 ++++++
+ server/test/training.test.js                       | 174 +++++
+ 26 files changed, 3140 insertions(+), 55 deletions(-)
+
+
+========================================
+鎻愪氦锛?5d9d4e
+鏃堕棿锛?026-08-22 12:10:29 +0800
+浣滆€咃細Antleios
+璇存槑锛歠eat: AI鍚夌ゥ鐗╃簿绠€鈥斺€斿幓鎺夊槾宸翠笌琛ㄦ儏鍙樹綋锛屽惉鍒扮Н鏋佽瘝鏃跺啋灏忕埍蹇? src/components/AiMascot.jsx | 142 +++++++++++++++-----------------------------
+ src/pages/AIChat.jsx        |  51 +++++++---------
+ 2 files changed, 71 insertions(+), 122 deletions(-)
+
+
+========================================
+鎻愪氦锛?81eaf7
+鏃堕棿锛?026-08-21 21:55:26 +0800
+浣滆€咃細Antleios
+璇存槑锛歠eat: AI瀵硅瘽鐣岄潰閲嶆瀯鈥斺€旈粍鑹插渾鑴稿悏绁ョ墿+璇煶鑱婂ぉ锛屽悇椤甸潰甯冨眬涓庢爣棰樹紭鍖? src/components/AiMascot.jsx    | 313 +++++++++++++++-----------------
+ src/pages/AIChat.jsx           | 393 ++++++++++++++++++-----------------------
+ src/pages/ColorLineGame.jsx    |   4 +-
+ src/pages/EmojiGame.jsx        |  12 +-
+ src/pages/ObjectNamingGame.jsx |   4 +-
+ src/pages/Patient.jsx          |  14 +-
+ src/pages/PatientSelect.jsx    |  14 +-
+ 7 files changed, 341 insertions(+), 413 deletions(-)
+
+
+========================================
+鎻愪氦锛歛21e6ff
+鏃堕棿锛?026-08-15 18:01:11 +0800
+浣滆€咃細Antleios
+璇存槑锛歞ocs: README 琛ュ厖AI瑙嗛閫氳瘽鍔熻兘璇存槑銆佹偅鑰呯璺敱涓庣湡瀹濧I鎺ュ叆鎸囧崡
+ README.md | 25 ++++++++++++++++++++++++-
+ 1 file changed, 24 insertions(+), 1 deletion(-)
+
+
+========================================
+鎻愪氦锛?be40dc
+鏃堕棿锛?026-08-15 17:56:55 +0800
+浣滆€咃細Antleios
+璇存槑锛歠eat: AI瑙嗛閫氳瘽鐣岄潰鈥斺€斿姩鐢诲悏绁ョ墿灏忔槦锛堢溂鐫涜窡闅忛紶鏍?璇磋瘽鍢村瀷锛?AI鎺ュ叆缂濋殭
+ server/src/index.js              |   2 +
+ server/src/routes/ai.js          |  17 +++
+ server/src/services/aiService.js |  43 ++++++
+ src/api/ai.js                    |  50 +++++++
+ src/api/client.js                |  17 +++
+ src/components/AiMascot.jsx      | 255 ++++++++++++++++++++++++++++++++
+ src/pages/AIChat.jsx             | 303 +++++++++++++++++++++++++++++++++++++--
+ 7 files changed, 678 insertions(+), 9 deletions(-)
+
+
+========================================
+鎻愪氦锛歠8c8b01
+鏃堕棿锛?026-08-15 12:28:45 +0800
+浣滆€咃細Antleios
+璇存槑锛歮erge: 鍚堝苟GitHub鏈€鏂版洿鏂帮紙鎵╁厖emoji棰樺簱銆侀鑹茶繛绾块殢鏈洪『搴忋€佽〃鎯呴殢鏈哄嚭棰橈級
+
+========================================
+鎻愪氦锛歞a1fdb9
+鏃堕棿锛?026-08-09 16:47:01 +0800
+浣滆€咃細Ruixuan Yang
+璇存槑锛歠eat:鎵╁厖棰樺簱锛宔moji涓哄熀纭€
+ server/prisma/data/emotionEmojis.js |  13 ++++
+ server/src/services/gamesService.js |   6 +-
+ src/data/emotionEmojis.js           | 131 +++++++++++-------------------------
+ src/data/objects.js                 |  20 ++++++
+ 4 files changed, 78 insertions(+), 92 deletions(-)
+
+
+========================================
+鎻愪氦锛?59ca56
+鏃堕棿锛?026-08-08 21:40:22 +0800
+浣滆€咃細Ruixuan Yang
+璇存槑锛歠eat:棰滆壊杩炵嚎瀹炵幇涓や晶闅忔満椤哄簭
+ src/data/colorItems.js | 36 +++++++++++++++++++++++++++++-------
+ 1 file changed, 29 insertions(+), 7 deletions(-)
+
+
+========================================
+鎻愪氦锛?6c9177
+鏃堕棿锛?026-08-08 21:33:05 +0800
+浣滆€咃細Ruixuan Yang
+璇存槑锛歠eat:琛ㄦ儏閫夋嫨鍙栨秷棰樺簱妯″紡锛屽疄鐜板彧瀛樺偍琛ㄦ儏锛屾瘡娆￠殢鏈虹粍鍚堝嚭棰? .gitignore                                         |  2 +
+ server/prisma/data/emotionEmojis.js                | 15 +++++
+ .../migration.sql                                  | 39 ++++++++++++
+ server/prisma/schema.prisma                        | 21 ++++---
+ server/prisma/seed.js                              | 41 +++++++------
+ server/src/services/gamesService.js                | 71 ++++++++++++++++------
+ 6 files changed, 143 insertions(+), 46 deletions(-)
+
+
+========================================
+鎻愪氦锛?0f9e5b
+鏃堕棿锛?026-08-04 20:19:06 +0800
+浣滆€咃細Antleios
+璇存槑锛歮erge: 鍚堝苟杩滅▼鏁版嵁搴撹縼绉讳笌娓告垙API鎺ュ叆锛屼繚鐣欐湰鍦拌闊宠瘑鍒慨澶?
+========================================
+鎻愪氦锛歛e6ef86
+鏃堕棿锛?026-08-04 20:12:28 +0800
+浣滆€咃細Antleios
+璇存槑锛歠eat: 鎮ｈ€呯鏂板娓告垙/AI瀵硅瘽閫夋嫨椤典笌AI瀵硅瘽鍗犱綅椤碉紝AI澶村儚鎹㈡垚鍝佺墝logo锛屽姞娣变富椤垫尝绾? src/App.jsx                 |  6 +++-
+ src/components/AIAvatar.jsx |  7 ++--
+ src/pages/AIChat.jsx        | 37 +++++++++++++++++++++
+ src/pages/Home.jsx          |  6 ++--
+ src/pages/Patient.jsx       |  6 ++--
+ src/pages/PatientSelect.jsx | 79 +++++++++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 131 insertions(+), 10 deletions(-)
+
+
+========================================
+鎻愪氦锛?220a9d
+鏃堕棿锛?026-08-04 20:11:45 +0800
+浣滆€咃細Antleios
+璇存槑锛歠ix: 淇鐗╁搧鍛藉悕娓告垙璇煶璇嗗埆闂锛堢瓑寰呮挱鎶ョ粨鏉熴€佹竻娲楁爣鐐广€佷慨澶嶉棴鍖呰繃鏈熷鑷村悗缁鐩垽閿欙級
+ src/pages/ObjectNamingGame.jsx | 101 ++++++++++++++++++++++++++++-------------
+ 1 file changed, 69 insertions(+), 32 deletions(-)
+
+
+========================================
+鎻愪氦锛?2cd7a6
+鏃堕棿锛?026-05-18 20:08:55 +0800
+浣滆€咃細Antleios
+璇存槑锛歁erge pull request #1 from Antleios/feature/dbDev
+
+========================================
+鎻愪氦锛?7876de
+鏃堕棿锛?026-05-17 22:14:42 +0800
+浣滆€咃細Ruixuan Yang
+璇存槑锛歠eat:鏁版嵁搴揝QLite+Prisma杩佺Щ锛屼慨澶嶈繛绾挎渶宸︿晶鏂瑰潡鏃犺櫄绾縝ug
+ .gitignore                                         |    5 +
+ README.md                                          |   19 +
+ eslint.config.js                                   |   15 +-
+ server/.env.example                                |    3 +
+ server/package-lock.json                           | 1270 ++++++++++++++++++++
+ server/package.json                                |   23 +
+ .../migrations/20260517193000_init/migration.sql   |   43 +
+ server/prisma/migrations/migration_lock.toml       |    3 +
+ server/prisma/schema.prisma                        |   46 +
+ server/prisma/seed.js                              |   83 ++
+ server/src/db/prisma.js                            |   15 +
+ server/src/index.js                                |   57 +
+ server/src/routes/games.js                         |   47 +
+ server/src/routes/health.js                        |   15 +
+ server/src/services/gamesService.js                |  143 +++
+ src/api/client.js                                  |   15 +
+ src/api/games.js                                   |   36 +
+ src/api/training.js                                |    7 +
+ src/components/RewardPopup.jsx                     |    2 -
+ src/data/colorItems.js                             |    9 +-
+ src/pages/ColorLineGame.jsx                        |   73 +-
+ src/pages/EmojiGame.jsx                            |   53 +-
+ src/pages/ObjectNamingGame.jsx                     |   56 +-
+ vite.config.js                                     |    5 +
+ 24 files changed, 1991 insertions(+), 52 deletions(-)
+
+
+========================================
+鎻愪氦锛?02250a
+鏃堕棿锛?026-05-14 22:17:19 +0800
+浣滆€咃細Antleios
+璇存槑锛氭柊寤轰簡涓€涓殏鏃剁殑鎮ｈ€呯鐣岄潰
+ src/App.jsx           |  2 ++
+ src/pages/Home.jsx    |  2 +-
+ src/pages/Patient.jsx | 88 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 91 insertions(+), 1 deletion(-)
+
+
+========================================
+鎻愪氦锛?8b335d
+鏃堕棿锛?026-05-14 21:56:41 +0800
+浣滆€咃細Antleios
+璇存槑锛氫慨澶嶄簡涓変釜娓告垙鐨刡ug
+ src/pages/ColorLineGame.jsx    | 20 +++++++++++++++++---
+ src/pages/EmojiGame.jsx        | 27 +++++++--------------------
+ src/pages/ObjectNamingGame.jsx | 12 ++++--------
+ 3 files changed, 28 insertions(+), 31 deletions(-)
+
+
+========================================
+鎻愪氦锛歞4f475f
+鏃堕棿锛?026-05-14 21:08:06 +0800
+浣滆€咃細Antleios
+璇存槑锛歠eat=瀹屽杽浜哻olorgame鐨勮繛绾块€昏緫
+ README.md                   | 111 ++++++++-----
+ fix_progress.py             |  23 +++
+ src/pages/ColorLineGame.jsx | 390 ++++++++++++++++++++++----------------------
+ 3 files changed, 290 insertions(+), 234 deletions(-)
+
+
+========================================
+鎻愪氦锛歜bad0e0
+鏃堕棿锛?026-05-13 21:43:21 +0800
+浣滆€咃細Antleios
+璇存槑锛歠eat=鎼缓瀹屽叏閮ㄤ富椤典互鍙婁笁涓父鎴忕晫闈? src/App.jsx                    |   6 +
+ src/components/AIAvatar.jsx    |  54 +++++++
+ src/components/ProgressBar.jsx |  22 +++
+ src/components/RewardPopup.jsx |  85 ++++++++++
+ src/data/colorItems.js         |  43 +++++
+ src/data/emotionEmojis.js      |  94 +++++++++++
+ src/data/objects.js            |  24 +++
+ src/pages/ColorLineGame.jsx    | 356 ++++++++++++++++++++++++++++++++++++++++-
+ src/pages/EmojiGame.jsx        | 263 +++++++++++++++++++++++++++++-
+ src/pages/Home.jsx             |   7 +-
+ src/pages/ObjectNamingGame.jsx | 341 ++++++++++++++++++++++++++++++++++++++-
+ 11 files changed, 1288 insertions(+), 7 deletions(-)
+
+
+========================================
+鎻愪氦锛歜7b6538
+鏃堕棿锛?026-05-13 16:58:45 +0800
+浣滆€咃細Antleios
+璇存槑锛歠eat: 鎼缓椤圭洰鍩虹妗嗘灦涓庝富椤垫惌寤? .gitignore                     |   24 +
+ README.md                      |   46 +
+ eslint.config.js               |   21 +
+ index.html                     |   13 +
+ package-lock.json              | 2792 ++++++++++++++++++++++++++++++++++++++++
+ package.json                   |   30 +
+ public/favicon.png             |  Bin 0 -> 96018 bytes
+ public/favicon.svg             |    1 +
+ public/icons.svg               |   24 +
+ src/App.jsx                    |   14 +
+ src/assets/brand-logo.png      |  Bin 0 -> 96018 bytes
+ src/assets/doctor.jpg          |  Bin 0 -> 202903 bytes
+ src/assets/logo.jpg            |  Bin 0 -> 106427 bytes
+ src/assets/patient.jpg         |  Bin 0 -> 75156 bytes
+ src/components/Navbar.jsx      |   20 +
+ src/index.css                  |    1 +
+ src/main.jsx                   |   10 +
+ src/pages/ColorLineGame.jsx    |    9 +
+ src/pages/EmojiGame.jsx        |    9 +
+ src/pages/Home.jsx             |  180 +++
+ src/pages/ObjectNamingGame.jsx |    9 +
+ vite.config.js                 |    8 +
+ 22 files changed, 3211 insertions(+)

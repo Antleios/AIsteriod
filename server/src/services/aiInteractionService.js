@@ -1,5 +1,6 @@
 import prisma from '../db/prisma.js'
 import { generatePatientInteractionReply } from './aiService.js'
+import { buildGameConversationContext } from './gameConversationContext.js'
 import {
   createPatientInteractionInput,
   sessionConversationMemoryOutputSchema,
@@ -110,6 +111,8 @@ async function getRecentConversation(sessionId) {
 
 export async function createSessionInteraction(user, sessionId, input) {
   assertPatient(user)
+  const session = await prisma.trainingSession.findFirst({ where: { id: sessionId, userId: user.id } })
+  if (!session) throw new AiInteractionError(404, 'SESSION_NOT_FOUND', '训练会话不存在')
 
   const existing = await prisma.aiInteraction.findUnique({
     where: {
@@ -128,11 +131,22 @@ export async function createSessionInteraction(user, sessionId, input) {
     )
   }
 
-  const session = await prisma.trainingSession.findFirst({
-    where: { id: sessionId, userId: user.id },
-  })
   assertActiveSession(session)
   await assertGameRun(sessionId, input.gameRunId)
+  let gameState = null
+  if (input.context !== 'CHAT') {
+    if (!input.gameRunId) throw new AiInteractionError(400, 'GAME_RUN_REQUIRED', '请先开始游戏再提问')
+    const run = await prisma.gameRun.findFirst({ where: { id: input.gameRunId, sessionId } })
+    const question = input.questionId ? await prisma.gameRunQuestion.findFirst({
+      where: { id: input.questionId, gameRunId: run.id },
+    }) : null
+    if (input.questionId && !question) throw new AiInteractionError(400, 'INVALID_QUESTION', '题目不属于当前游戏')
+    try {
+      gameState = buildGameConversationContext(run, question, input.context)
+    } catch {
+      throw new AiInteractionError(400, 'INVALID_GAME_CONTEXT', '游戏场景不匹配')
+    }
+  }
 
   const interaction = await prisma.$transaction(async (tx) => {
     const created = await tx.aiInteraction.create({
@@ -176,7 +190,8 @@ export async function createSessionInteraction(user, sessionId, input) {
     const llmInput = createPatientInteractionInput({
       trigger: input.trigger,
       context: input.context,
-      gameState: input.gameState,
+      gameState,
+      gameRunId: input.gameRunId,
       userText: input.userText,
       inputMethod: input.inputMethod,
       previousSessionMemory:
@@ -236,6 +251,7 @@ export async function createSessionInteraction(user, sessionId, input) {
       },
     })
     if (error instanceof AiInteractionError) throw error
+    if (error.code === 'AI_NOT_CONFIGURED') throw new AiInteractionError(error.status, error.code, error.message)
     throw new AiInteractionError(502, 'AI_INTERACTION_FAILED', '互动回复生成失败，请稍后重试')
   }
 }

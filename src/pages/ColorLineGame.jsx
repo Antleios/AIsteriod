@@ -1,4 +1,9 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import GameVoiceInput from '../components/GameVoiceInput.jsx'
+import SpeechControls from '../components/SpeechControls.jsx'
+import GameConversation from '../components/GameConversation.jsx'
+import { useSpeechBusy } from '../hooks/useGentleSpeech.js'
+import { useGameSpeech } from '../hooks/useGameSpeech.js'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ProgressBar from '../components/ProgressBar.jsx'
 import AIAvatar from '../components/AIAvatar.jsx'
@@ -27,6 +32,9 @@ function ColorLineGame() {
 
   /* ── state ── */
   const [score, setScore] = useState(0)
+  const [gameChatActive, setGameChatActive] = useState(false)
+  const [gameVoiceActive, setGameVoiceActive] = useState(false)
+  const gameConversationRef = useRef(null)
   const [todayCompleted, setTodayCompleted] = useState(0)
   const [roundConfig, setRoundConfig] = useState({
     dailyGoal: DEFAULT_DAILY_GOAL,
@@ -66,7 +74,6 @@ function ColorLineGame() {
   const pairStartedAtRef = useRef(new Map())
   const gameStartPromiseRef = useRef(null)
 
-  useTrainingIdleTracker(gameRunId)
 
   /* ── ref for current matched IDs (always up-to-date inside closures) ── */
   const matchedIdsRef = useRef(new Set())
@@ -76,6 +83,7 @@ function ColorLineGame() {
 
   /* ── drag state ── */
   const [dragging, setDragging] = useState(false)
+  useTrainingIdleTracker(gameRunId, { conversationRef: gameConversationRef, paused: gameChatActive || dragging || !['playing', 'wrong'].includes(step) || todayCompleted >= roundConfig.dailyGoal })
   const [dragFromId, setDragFromId] = useState(null)
   const [dragPos, setDragPos] = useState({ x: 0, y: 0 })
   const [dropTargetId, setDropTargetId] = useState(null)
@@ -146,13 +154,8 @@ function ColorLineGame() {
     }
   }, [])
 
-  const speak = useCallback((t) => {
-    if (!window.speechSynthesis) return
-    window.speechSynthesis.cancel()
-    const u = new SpeechSynthesisUtterance(t)
-    u.lang = 'zh-CN'; u.rate = 0.9
-    window.speechSynthesis.speak(u)
-  }, [])
+  const speak = useGameSpeech(gameConversationRef)
+  const speechBusy = useSpeechBusy()
 
   /* ── init round ── */
   useEffect(() => {
@@ -212,6 +215,7 @@ function ColorLineGame() {
 
       // prevent re-matching already-paired items
       if (matchedIdsRef.current.has(from.id) || matchedIdsRef.current.has(target.id)) return
+      gameConversationRef.current?.record('user', `将${from.label}连到${target.label}`)
 
       let isCorrect = from.color === target.color
       const questionId = questionIdsByColorRef.current.get(from.color)
@@ -274,7 +278,7 @@ function ColorLineGame() {
 
   /* ── item pointer down ── */
   const handlePointerDown = (e, item) => {
-    if (step !== 'playing' || matchedIds.has(item.id)) return
+    if (gameChatActive || gameVoiceActive || step !== 'playing' || matchedIds.has(item.id)) return
     e.preventDefault()
     const r = svgRef.current?.getBoundingClientRect()
     if (!r) return
@@ -291,18 +295,18 @@ function ColorLineGame() {
 
   /* ── auto-advance after correct ── */
   useEffect(() => {
-    if (step === 'correct' && matches.length < roundConfig.totalPairs) {
+    if (step === 'correct' && !speechBusy && !gameChatActive && !gameVoiceActive && matches.length < roundConfig.totalPairs) {
       const t = setTimeout(() => { setStep('playing'); setFeedbackText('') }, 1800)
       return () => clearTimeout(t)
     }
-  }, [roundConfig.totalPairs, step, matches.length])
+  }, [roundConfig.totalPairs, step, matches.length, speechBusy, gameChatActive, gameVoiceActive])
 
   useEffect(() => {
-    if (matches.length === roundConfig.totalPairs && step === 'correct') {
+    if (matches.length === roundConfig.totalPairs && step === 'correct' && !speechBusy && !gameChatActive && !gameVoiceActive) {
       const t = setTimeout(() => { setStep('complete'); setFeedbackText('') }, 1200)
       return () => clearTimeout(t)
     }
-  }, [matches.length, roundConfig.totalPairs, step])
+  }, [matches.length, roundConfig.totalPairs, step, speechBusy, gameChatActive, gameVoiceActive])
 
   const isAllDone = todayCompleted >= roundConfig.dailyGoal
 
@@ -347,6 +351,7 @@ function ColorLineGame() {
         <ProgressBar current={todayCompleted} total={roundConfig.dailyGoal} />
       </div>
 
+      <SpeechControls />
       <main className="mx-auto flex max-w-4xl flex-col items-center px-4 pb-12">
         {isAllDone ? (
           <div className="mt-16 flex flex-col items-center gap-6">
@@ -504,6 +509,8 @@ function ColorLineGame() {
             )}
           </>
         )}
+        {!isAllDone && <GameVoiceInput onActivity={setGameVoiceActive} disabled={gameChatActive} onSend={(text, method = 'ASR') => gameConversationRef.current?.ask(text, method)} />}
+        <GameConversation ref={gameConversationRef} onActivity={setGameChatActive} gameRunId={gameRunId} context="COLOR_LINE" />
       </main>
 
       <RewardPopup show={showReward} onComplete={() => setShowReward(false)} />

@@ -1,7 +1,8 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
 
 function run(command, args, env) {
   return new Promise((resolve, reject) => {
@@ -30,7 +31,7 @@ const testDirectory = await mkdtemp(join(tmpdir(), 'aisteriod-auth-test-'))
 const databasePath = join(testDirectory, 'test.db')
 const env = {
   ...process.env,
-  DATABASE_URL: `file:${databasePath}`,
+  DATABASE_URL: `file:${databasePath.replaceAll('\\', '/')}`,
   NODE_ENV: 'test',
   AUTH_LOGIN_MAX_ATTEMPTS: '100',
   AUTH_REGISTER_MAX_ATTEMPTS: '100',
@@ -38,11 +39,14 @@ const env = {
   AI_DOCTOR_PROVIDER: 'deterministic',
   AI_MEMORY_PROVIDER: 'deterministic',
 }
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
+const prismaCli = createRequire(import.meta.url).resolve('prisma/build/index.js')
 
 try {
-  await run(npx, ['prisma', 'generate'], env)
-  await run(npx, ['prisma', 'migrate', 'deploy'], env)
+  // On Windows the schema engine may fail to create a missing absolute SQLite file.
+  await writeFile(databasePath, '')
+  // Opt in only when the schema is unchanged and a running Windows server holds the DLL.
+  if (!process.argv.includes('--skip-generate')) await run(process.execPath, [prismaCli, 'generate'], env)
+  await run(process.execPath, [prismaCli, 'migrate', 'deploy'], env)
   await run(process.execPath, ['prisma/seed.js'], env)
   // API tests share one temporary SQLite database, so test files must not
   // truncate the user table concurrently.

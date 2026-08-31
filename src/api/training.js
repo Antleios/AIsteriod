@@ -129,13 +129,15 @@ export async function startTrainingGame(gameCode) {
   return { sessionId: active.sessionId, gameRun }
 }
 
-export async function recordTrainingAttempt({ questionId, answer, action, responseTimeMs }) {
+export async function recordTrainingAttempt({ questionId, answer, action, responseTimeMs, inputMethod }) {
   const active = await getExistingSession()
   if (!active || !questionId) return null
   const { attempt } = await apiPost(
     `/api/training/sessions/${active.sessionId}/questions/${questionId}/attempts`,
-    { answer: answer == null ? null : String(answer), action, responseTimeMs },
+    { answer: answer == null ? null : String(answer), action, responseTimeMs, inputMethod },
   )
+  if (attempt.outcome === 'CONVERSATION') return attempt
+  if (attempt.multipleWrong) window.dispatchEvent(new CustomEvent('game-multiple-wrong', { detail: { gameRunId: attempt.gameRun.id, questionId } }))
   try {
     await recordTrainingEvents([
       {
@@ -170,6 +172,7 @@ export async function requestSessionAiReply({
   inputMethod = 'TEXT',
   context = 'CHAT',
   gameRunId,
+  questionId,
   trigger = 'USER_MESSAGE',
   gameState,
 }) {
@@ -187,6 +190,7 @@ export async function requestSessionAiReply({
       inputMethod,
       context,
       gameRunId,
+      questionId,
       trigger,
       gameState,
     },

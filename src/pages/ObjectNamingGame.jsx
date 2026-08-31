@@ -1,3 +1,9 @@
+import SpeechControls from '../components/SpeechControls.jsx'
+import GameConversation from '../components/GameConversation.jsx'
+import { useSpeechBusy } from '../hooks/useGentleSpeech.js'
+import { useGameSpeech } from '../hooks/useGameSpeech.js'
+import { cancelSpeech } from '../api/speech.js'
+import { createVoiceInput } from '../api/voiceInput.js'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ProgressBar from '../components/ProgressBar.jsx'
@@ -12,6 +18,8 @@ import {
 } from '../api/training.js'
 import { pickGameMessage } from '../data/gameMessages.js'
 import objects from '../data/objects.js'
+import { matchesObjectAnswer } from '../../shared/objectNaming.js'
+import { isGameConversation } from '../../shared/gameIntent.js'
 
 const DAILY_GOAL = 10
 
@@ -40,6 +48,7 @@ function ObjectNamingGame() {
   const [session, setSession] = useState(() => shuffle(objects))
   const [currentIndex, setCurrentIndex] = useState(0)
   const [score, setScore] = useState(0)
+  const [gameChatActive, setGameChatActive] = useState(false)
   const [todayCompleted, setTodayCompleted] = useState(0)
   const [step, setStep] = useState('prompting')
   const [feedbackText, setFeedbackText] = useState('')
@@ -54,6 +63,7 @@ function ObjectNamingGame() {
   )
   const [showReward, setShowReward] = useState(false)
   const [gameRunId, setGameRunId] = useState(null)
+  const [questionsReady, setQuestionsReady] = useState(false)
   const [listening, setListening] = useState(false)
   const [transcript, setTranscript] = useState('')
   const [manualInput, setManualInput] = useState('')
@@ -63,15 +73,18 @@ function ObjectNamingGame() {
   const manualInputRef = useRef('')
   const questionStartedAtRef = useRef(0)
   const gameStartPromiseRef = useRef(null)
+  const gameConversationRef = useRef(null)
+  const submittingRef = useRef(false)
+  const listenTimerRef = useRef(null)
 
   const current = session[currentIndex]
 
-  useTrainingIdleTracker(gameRunId)
+  useTrainingIdleTracker(gameRunId, { conversationRef: gameConversationRef, questionId: current?.questionId, paused: gameChatActive || !['listening', 'feedback_incorrect'].includes(step) || todayCompleted >= DAILY_GOAL })
 
   useEffect(() => {
     let cancelled = false
     const loadFallbackQuestions = () => {
-      fetchObjectNamingQuestions()
+      return fetchObjectNamingQuestions()
         .then((questions) => {
           if (cancelled || !questions.length) return
           setQuestionBank(questions)
@@ -102,8 +115,7 @@ function ObjectNamingGame() {
           prompt: question.prompt,
         }))
         if (!questions?.length) {
-          loadFallbackQuestions()
-          return
+          return loadFallbackQuestions()
         }
         setGameRunId(training.gameRun.id)
         setQuestionBank(questions)
@@ -111,69 +123,88 @@ function ObjectNamingGame() {
         setCurrentIndex(0)
       })
       .catch(loadFallbackQuestions)
+      .finally(() => { if (!cancelled) setQuestionsReady(true) })
 
     return () => {
       cancelled = true
     }
   }, [])
 
-  const speak = useCallback((text, onEnd) => {
-    if (!window.speechSynthesis) return
-    window.speechSynthesis.cancel()
-    const utter = new SpeechSynthesisUtterance(text)
-    utter.lang = 'zh-CN'
-    utter.rate = 0.9
-    utter.pitch = 1.1
-    if (onEnd) {
-      utter.onend = onEnd
-      utter.onerror = onEnd
-    }
-    window.speechSynthesis.speak(utter)
-  }, [])
+  const speak = useGameSpeech(gameConversationRef)
+  const speechBusy = useSpeechBusy()
 
   const stopListening = useCallback(() => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop()
-      } catch { /* ignore */ }
-      recognitionRef.current = null
-    }
+    clearTimeout(listenTimerRef.current)
+    recognitionRef.current?.dispose()
+    recognitionRef.current = null
     setListening(false)
   }, [])
 
+  useEffect(() => () => {
+    clearTimeout(listenTimerRef.current)
+    recognitionRef.current?.dispose()
+  }, [])
+
   const checkAnswer = useCallback(
-    async (answer) => {
+    async (answer, inputMethod = 'ASR') => {
+      if (submittingRef.current) return
       stopListening()
+      if (!current.questionId && isGameConversation(answer)) {
+        submittingRef.current = true
+        setStep('chatting')
+        try { await gameConversationRef.current?.ask(answer, inputMethod) }
+        finally { submittingRef.current = false; setStep('listening') }
+        return
+      }
       const cleaned = cleanAnswer(answer)
       if (!cleaned) return // 识别到的全是标点，忽略，不判题
+      gameConversationRef.current?.record('user', answer.trim())
       let isCorrect
+      let apiFeedback
       if (current.questionId) {
+        submittingRef.current = true
+        setStep('submitting')
         try {
           const attempt = await recordTrainingAttempt({
             questionId: current.questionId,
-            answer: cleaned,
+            answer: answer.trim(),
+            inputMethod,
             responseTimeMs: currentTime() - questionStartedAtRef.current,
           })
-          isCorrect = attempt?.isCorrect
-        } catch {
-          setStep('feedback_incorrect')
-          setFeedbackText(
-            pickGameMessage('objectNaming', 'recordError').display,
-          )
+          if (!attempt) throw new Error('请先登录并开始训练，本次不计对错。')
+          if (attempt.outcome === 'CONVERSATION') {
+            setManualInput('')
+            setTranscript('')
+            manualInputRef.current = ''
+            setStep('listening')
+            setFeedbackText('')
+            speak(attempt.feedback)
+            return
+          }
+          isCorrect = attempt.isCorrect
+          apiFeedback = attempt.provider === 'qwen' ? attempt.feedback : null
+        } catch (error) {
+          setStep('listening')
+          setFeedbackText(error.message || '暂时无法判断，本次不计对错，请重试。')
           return
+        } finally {
+          submittingRef.current = false
         }
       } else {
         const correct = current.name
-        isCorrect = cleaned.includes(correct) || correct.includes(cleaned)
+        isCorrect = matchesObjectAnswer(cleaned, [correct])
       }
 
+      setManualInput('')
+      setTranscript('')
+      manualInputRef.current = ''
       if (isCorrect) {
         setStep('feedback_correct')
         const message = pickGameMessage('objectNaming', 'correct', {
           answer: current.name,
         })
-        setFeedbackText(message.display)
-        speak(message.speech)
+        setFeedbackText(apiFeedback || message.display)
+        speak(apiFeedback || message.speech)
         setScore((s) => s + 1)
         setShowReward(true)
         setTodayCompleted((n) => n + 1)
@@ -182,8 +213,8 @@ function ObjectNamingGame() {
         const message = pickGameMessage('objectNaming', 'incorrect', {
           heard: cleaned,
         })
-        setFeedbackText(message.display)
-        speak(message.speech)
+        setFeedbackText(apiFeedback || message.display)
+        speak(apiFeedback || message.speech)
       }
     },
     [current, speak, stopListening],
@@ -196,47 +227,30 @@ function ObjectNamingGame() {
     manualInputRef.current = manualInput
   })
   const startListening = useCallback(() => {
-    setTranscript('')
-    transcriptRef.current = ''
-    setManualInput('')
-
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognition) {
-      setStep('listening')
+    if (submittingRef.current) return
+    cancelSpeech()
+    stopListening()
+    setStep('listening')
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!Recognition || !window.isSecureContext) {
+      setFeedbackText('当前环境无法使用语音识别，可以在下方输入文字。')
       return
     }
-
-    const recognition = new SpeechRecognition()
-    recognition.lang = 'zh-CN'
-    recognition.continuous = false
-    recognition.interimResults = true
-
-    recognition.onstart = () => {
-      setListening(true)
-      setStep('listening')
-    }
-    recognition.onresult = (e) => {
-      const t = Array.from(e.results)
-        .map((r) => r[0].transcript)
-        .join('')
-      setTranscript(t)
-      transcriptRef.current = t
-    }
-    recognition.onerror = () => {
-      setListening(false)
-    }
-    recognition.onend = () => {
-      setListening(false)
-      const final = transcriptRef.current || manualInputRef.current
-      if (final.trim()) {
-        checkAnswerRef.current(final.trim())
-      }
-    }
-
-    recognitionRef.current = recognition
-    recognition.start()
-  }, [])
+    recognitionRef.current = createVoiceInput({
+      Recognition,
+      initialText: manualInputRef.current,
+      onText: (text) => {
+        setTranscript(text)
+        transcriptRef.current = text
+        setManualInput(text)
+        manualInputRef.current = text
+      },
+      onStatus: (status) => setListening(status !== 'idle'),
+      onError: setFeedbackText,
+      onAutoSend: (text) => checkAnswerRef.current(text, 'ASR'),
+    })
+    recognitionRef.current.start()
+  }, [stopListening])
 
   // 提问：等 AI 语音播报结束后再开始听，避免 AI 的声音被识别成答案
   const promptAndListen = useCallback(
@@ -253,29 +267,23 @@ function ObjectNamingGame() {
         if (started) return
         started = true
         // 停掉残留的 AI 语音，防止麦克风把播报拾音进去
-        if (window.speechSynthesis) window.speechSynthesis.cancel()
-        setTimeout(startListening, 300)
-      }
-      if (!window.speechSynthesis) {
-        beginListening()
-        return
+        cancelSpeech()
+        listenTimerRef.current = setTimeout(startListening, 300)
       }
       speak(message.speech, beginListening)
-      // 兜底：个别浏览器 onend 不触发时也能开始听
-      setTimeout(beginListening, 4000)
     },
     [speak, startListening],
   )
 
   useEffect(() => {
-    if (!current) return
+    if (!current || !questionsReady) return
     questionStartedAtRef.current = currentTime()
     // 延迟一帧执行，避免在 effect 里同步 setState（react-hooks/set-state-in-effect）
     const timer = setTimeout(() => {
       promptAndListen(pickGameMessage('objectNaming', 'prompt'))
     }, 0)
     return () => clearTimeout(timer)
-  }, [currentIndex, current, promptAndListen])
+  }, [currentIndex, current, promptAndListen, questionsReady])
 
   const goNext = useCallback(() => {
     if (currentIndex < session.length - 1) {
@@ -287,11 +295,11 @@ function ObjectNamingGame() {
   }, [currentIndex, questionBank, session.length])
 
   useEffect(() => {
-    if (step === 'feedback_correct') {
+    if (step === 'feedback_correct' && !speechBusy && !gameChatActive && todayCompleted < DAILY_GOAL) {
       const timer = setTimeout(goNext, 2500)
       return () => clearTimeout(timer)
     }
-  }, [step, goNext])
+  }, [step, goNext, speechBusy, todayCompleted, gameChatActive])
 
   const handleRetry = () => {
     promptAndListen(pickGameMessage('objectNaming', 'prompt'))
@@ -301,7 +309,7 @@ function ObjectNamingGame() {
     e?.preventDefault()
     if (!manualInput.trim()) return
     stopListening()
-    checkAnswer(manualInput.trim())
+    checkAnswer(manualInput.trim(), 'TEXT')
   }
 
   const leaveTraining = async (reason, target = '/') => {
@@ -372,6 +380,7 @@ function ObjectNamingGame() {
         </div>
       </div>
 
+      <SpeechControls />
       {/* Progress Bar */}
       <div className="mx-6 mb-4">
         <ProgressBar current={todayCompleted} total={DAILY_GOAL} />
@@ -425,7 +434,8 @@ function ObjectNamingGame() {
             <div className="mt-16 flex w-full max-w-xl flex-col items-center gap-4">
               {step !== 'feedback_correct' && (
                 <button
-                  onClick={listening ? stopListening : startListening}
+                  disabled={step === 'chatting' || gameChatActive}
+                  onClick={listening ? () => recognitionRef.current?.stop() : startListening}
                   className={`flex items-center gap-3 rounded-2xl px-8 py-4 text-lg font-medium shadow-lg transition-all duration-300 ${
                     listening
                       ? 'scale-105 bg-red-100 text-red-500 shadow-red-200'
@@ -433,9 +443,11 @@ function ObjectNamingGame() {
                   }`}
                 >
                   <span className="text-2xl">{listening ? '🔴' : '🎤'}</span>
-                  {listening ? '正在聆听...' : '点击说话'}
+                  {listening ? '停止并保留文字' : '点击说话'}
                 </button>
               )}
+
+              {step !== 'feedback_correct' && <p className="text-xs text-gray-500">停顿 2 秒自动发送，想要提示或觉得困难都可以说。</p>}
 
               {transcript && step === 'listening' && (
                 <p className="rounded-xl bg-white/80 px-4 py-2 text-sm text-gray-500 shadow-sm">
@@ -444,15 +456,17 @@ function ObjectNamingGame() {
               )}
 
               {step === 'listening' && (
-                <form onSubmit={handleManualSubmit} className="mt-2 flex w-full gap-3">
+                <form onSubmit={handleManualSubmit} className="animate-fade-in mt-2 flex w-full gap-3">
                   <input
                     type="text"
+                    disabled={gameChatActive}
                     value={manualInput}
                     onChange={(e) => setManualInput(e.target.value)}
-                    placeholder="或者在这里输入答案..."
+                    placeholder="输入答案，也可以问小星要提示..."
                     className="flex-1 rounded-2xl border border-gray-200 bg-white/80 px-5 py-3 text-sm outline-none transition-all focus:border-[#3B82F6] focus:ring-2 focus:ring-[#3B82F6]/20"
                   />
                   <button
+                    disabled={gameChatActive}
                     type="submit"
                     className="rounded-2xl bg-[#3B82F6] px-6 py-3 text-sm font-medium text-white transition-all hover:bg-[#2563EB]"
                   >
@@ -497,6 +511,7 @@ function ObjectNamingGame() {
             </div>
           </>
         )}
+        <GameConversation onActivity={setGameChatActive} ref={gameConversationRef} gameRunId={gameRunId} questionId={current.questionId} context="OBJECT_NAMING" onBeforeListen={stopListening} />
       </main>
 
       <RewardPopup show={showReward} onComplete={() => setShowReward(false)} />

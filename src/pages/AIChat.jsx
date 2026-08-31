@@ -1,42 +1,37 @@
+import SpeechControls from '../components/SpeechControls.jsx'
+import { useGentleSpeech, useSpeechStatus } from '../hooks/useGentleSpeech.js'
+import { cancelSpeech } from '../api/speech.js'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AiMascot from '../components/AiMascot.jsx'
 import { requestAIMessage } from '../api/ai.js'
+import { createVoiceInput } from '../api/voiceInput.js'
 
 function AIChat() {
   const navigate = useNavigate()
 
   const [conversation, setConversation] = useState([]) // [{ role, content }]，真实 AI 接入时即完整对话历史
-  const [transcript, setTranscript] = useState('') // 正在聆听时实时回显
+  const [transcript, setTranscript] = useState('') // 实时转写，停止后保留为可编辑草稿
   const [mascotExpression, setMascotExpression] = useState('calm') // calm | loving
-  const [listening, setListening] = useState(false) // 正在聆听用户说话
+  const [voiceStatus, setVoiceStatus] = useState('idle')
+  const listening = voiceStatus !== 'idle'
+  const [sending, setSending] = useState(false)
   const [voiceError, setVoiceError] = useState('')
   const [chatReady, setChatReady] = useState(false)
+  const [provider, setProvider] = useState('')
+  const speechStatus = useSpeechStatus()
 
   const handlingRef = useRef(false) // 等待 AI 回复期间锁住，禁止连续发送
   const loveTimeoutRef = useRef(null) // 「喜欢」表情的计时器
-  const sendMessageRef = useRef(null) // 供语音 onend 调用最新的 sendMessage
   const recognitionRef = useRef(null)
-  const transcriptRef = useRef('')
-  const suppressSendRef = useRef(false) // 用户手动停止聆听时不自动发送
+  const voiceStatusRef = useRef('idle')
+  const sendMessageRef = useRef(null)
+  const inputMethodRef = useRef('TEXT')
   const chatEndRef = useRef(null)
+  const aliveRef = useRef(true)
+  const greetingIdRef = useRef(null)
 
-  const speak = useCallback((text, onEnd) => {
-    if (!window.speechSynthesis) {
-      onEnd?.()
-      return
-    }
-    window.speechSynthesis.cancel()
-    const utter = new SpeechSynthesisUtterance(text)
-    utter.lang = 'zh-CN'
-    utter.rate = 0.9
-    utter.pitch = 1.1
-    if (onEnd) {
-      utter.onend = onEnd
-      utter.onerror = onEnd
-    }
-    window.speechSynthesis.speak(utter)
-  }, [])
+  const speak = useGentleSpeech()
 
   // 显示「喜欢」表情（头顶冒小爱心），4 秒后恢复平静
   const showLoving = useCallback(() => {
@@ -48,59 +43,61 @@ function AIChat() {
   const sendMessage = useCallback(
     async (raw, inputMethod = 'TEXT') => {
       const content = (raw ?? '').trim()
-      if (!content || handlingRef.current) return
+      if (!content || handlingRef.current || voiceStatusRef.current !== 'idle') return
       handlingRef.current = true
+      setSending(true)
+      setVoiceError('')
 
       const userMsg = { role: 'user', content }
       const nextMessages = [...conversation, userMsg]
       setConversation(nextMessages)
 
-      // 听到喜欢的话 → 立刻换成「喜欢」表情（冒小爱心）
-      const positive = /喜欢|谢谢|感谢|爱|棒|开心|好呀|好哒|真棒|聪明|爱你|感谢你/.test(content)
-
       try {
-        const { reply } = await requestAIMessage(nextMessages, { inputMethod })
+        const { reply, emotion, provider: replyProvider } = await requestAIMessage(nextMessages, { inputMethod })
+        if (!aliveRef.current) return
+        setProvider(replyProvider)
         setConversation((prev) => [...prev, { role: 'assistant', content: reply }])
-        // 用户的话或 AI 回复里带积极词，都会触发爱心
-        const positiveReply = /喜欢|谢谢|感谢|爱|棒|开心|好呀|好哒|真棒|聪明|加油|太棒/.test(reply)
-        if (positive || positiveReply) {
+        setTranscript('')
+        inputMethodRef.current = 'TEXT'
+        if (emotion === 'celebrating') {
           showLoving()
         } else {
           setMascotExpression('calm')
         }
-        speak(reply, () => {
-          handlingRef.current = false
-        })
-      } catch {
-        handlingRef.current = false
+        speak(reply)
+      } catch (error) {
+        if (!aliveRef.current) return
         setMascotExpression('calm')
-        setVoiceError('消息已经保存，但 AI 暂时无法回复，请稍后再试')
+        setVoiceError(`${error.message || '发送或 AI 回复失败'}，输入内容已保留。`)
+      } finally {
+        handlingRef.current = false
+        setSending(false)
       }
     },
     [conversation, speak, showLoving],
   )
 
-  // 每次渲染后同步最新 sendMessage 到 ref，供语音 onend 回调调用
   useEffect(() => {
     sendMessageRef.current = sendMessage
-  })
+  }, [sendMessage])
 
   // 开场白也由会话接口生成和保存，确保医生端看到的记录与患者端一致。
   useEffect(() => {
     let cancelled = false
     handlingRef.current = true
+    greetingIdRef.current ??= `greeting-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`
     requestAIMessage([], {
       trigger: 'CHAT_START',
-      clientRequestId: 'chat-greeting-v1',
+      clientRequestId: greetingIdRef.current,
     })
-      .then(({ reply }) => {
+      .then(({ reply, provider: replyProvider }) => {
         if (cancelled) return
         setConversation([{ role: 'assistant', content: reply }])
         setChatReady(true)
+        setProvider(replyProvider)
         setVoiceError('')
-        speak(reply, () => {
-          handlingRef.current = false
-        })
+        handlingRef.current = false
+        speak(reply)
       })
       .catch((error) => {
         if (cancelled) return
@@ -118,85 +115,58 @@ function AIChat() {
   }, [conversation])
 
   const stopListening = useCallback(() => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop()
-      } catch { /* ignore */ }
-    }
-    recognitionRef.current = null
-    setListening(false)
+    recognitionRef.current?.stop()
   }, [])
 
   const startListening = useCallback(() => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SpeechRecognition) {
-      setVoiceError('当前浏览器不支持语音识别，请使用 Chrome / Edge 体验语音聊天')
+      setVoiceError('当前浏览器不支持语音识别，可以直接输入文字，或使用支持语音识别的 Chrome / Edge。')
+      return
+    }
+    if (!window.isSecureContext) {
+      setVoiceError('麦克风需要安全连接，请使用 HTTPS 或 localhost 打开页面。')
       return
     }
     // 停掉 AI 正在播报的语音，防止被麦克风拾音进去
-    if (window.speechSynthesis) window.speechSynthesis.cancel()
+    cancelSpeech()
     setVoiceError('')
-    setListening(true)
-    setTranscript('')
-    transcriptRef.current = ''
-    suppressSendRef.current = false
-
-    const recognition = new SpeechRecognition()
-    recognition.lang = 'zh-CN'
-    recognition.continuous = false
-    recognition.interimResults = true
-
-    recognition.onresult = (e) => {
-      let text = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        text += e.results[i][0].transcript
-      }
-      transcriptRef.current = text
-      setTranscript(text)
-    }
-    recognition.onerror = () => {
-      setListening(false)
-      recognitionRef.current = null
-    }
-    recognition.onend = () => {
-      setListening(false)
-      recognitionRef.current = null
-      const final = transcriptRef.current.trim()
-      transcriptRef.current = ''
-      setTranscript('')
-      if (final && !suppressSendRef.current) {
-        sendMessageRef.current(final, 'ASR') // 说完自动发送
-      }
-    }
-
-    recognitionRef.current = recognition
-    recognition.start()
-  }, [])
-
-  // 手动停止聆听：不自动发送当前内容
-  const cancelListening = useCallback(() => {
-    suppressSendRef.current = true
-    stopListening()
-  }, [stopListening])
+    recognitionRef.current?.dispose()
+    inputMethodRef.current = 'ASR'
+    recognitionRef.current = createVoiceInput({
+      Recognition: SpeechRecognition,
+      initialText: transcript,
+      onText: setTranscript,
+      onStatus: (status) => {
+        voiceStatusRef.current = status
+        setVoiceStatus(status)
+      },
+      onError: setVoiceError,
+      onAutoSend: (text) => sendMessageRef.current?.(text, inputMethodRef.current),
+    })
+    recognitionRef.current.start()
+  }, [transcript])
 
   const toggleListening = useCallback(() => {
-    if (!chatReady) return
+    if (!chatReady || handlingRef.current) return
     if (listening) {
-      cancelListening()
+      stopListening()
     } else {
       startListening()
     }
-  }, [chatReady, listening, cancelListening, startListening])
+  }, [chatReady, listening, stopListening, startListening])
 
   // 卸载时清理
   useEffect(() => {
+    aliveRef.current = true
     return () => {
+      aliveRef.current = false
       if (loveTimeoutRef.current) clearTimeout(loveTimeoutRef.current)
-      stopListening()
-      if (window.speechSynthesis) window.speechSynthesis.cancel()
+      recognitionRef.current?.dispose()
+      cancelSpeech()
     }
-  }, [stopListening])
+  }, [])
 
   return (
     <div className="relative flex min-h-screen flex-col bg-gradient-to-br from-[#EAF4FF] via-white to-[#EAF4FF]/60">
@@ -215,6 +185,7 @@ function AIChat() {
         <div className="w-[88px]" />
       </div>
 
+      <SpeechControls />
       {/* 对话气泡（上方）：右侧用户，左侧 AI */}
       <div className="flex-1 overflow-y-auto px-4">
         <div className="mx-auto flex max-w-2xl flex-col gap-3 py-4">
@@ -243,27 +214,49 @@ function AIChat() {
         <AiMascot expression={mascotExpression} listening={listening} size={170} />
       </div>
 
-      {/* 语音控制区：只有麦克风，说完自动发送 */}
+      {/* 停顿两秒自动发送；手动停止保留草稿。 */}
       <div className="border-t border-white/50 bg-white/60 px-4 py-4 backdrop-blur-sm">
-        {listening && (
-          <div className="pb-3 text-center">
-            <p className="text-sm font-medium text-[#3B82F6]">
-              🎤 正在聆听…说完会自动发送
-            </p>
-            {transcript && (
-              <p className="mx-auto mt-1.5 max-w-sm rounded-xl bg-white/80 px-3 py-1.5 text-sm text-gray-600 shadow-sm">
-                {transcript}
-              </p>
-            )}
+        {provider === 'deterministic' && <p className="pb-2 text-center text-xs text-orange-700">当前为离线演示回复，请配置后端 Qwen API。</p>}
+        {speechStatus && <p className="pb-2 text-center text-xs text-gray-400">{speechStatus}</p>}
+        <div className="mx-auto max-w-2xl pb-3">
+          <p role="status" className="pb-2 text-center text-sm font-medium text-[#3B82F6]">
+            {voiceStatus === 'starting' ? '正在启动麦克风，请允许浏览器使用麦克风…'
+              : voiceStatus === 'stopping' ? '正在结束录音，保留识别文字…'
+                : voiceStatus === 'waiting' ? '已识别，停顿满 2 秒后自动发送…'
+                  : listening ? '🎤 正在实时识别，停顿 2 秒自动发送；点击麦克风可停止并保留文字'
+                    : '点击麦克风说话，停顿 2 秒自动发送；也可以输入文字'}
+          </p>
+          <textarea
+            aria-label="消息内容"
+            value={transcript}
+            onChange={(event) => {
+              setTranscript(event.target.value)
+              inputMethodRef.current = 'TEXT'
+            }}
+            readOnly={listening || sending}
+            placeholder="识别的文字会显示在这里，也可以直接输入…"
+            rows={3}
+            className="w-full resize-none rounded-xl border border-blue-100 bg-white px-4 py-3 text-base text-gray-700 outline-none focus:border-blue-400"
+          />
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() => sendMessage(transcript, inputMethodRef.current)}
+              disabled={!chatReady || listening || sending || !transcript.trim()}
+              className="rounded-xl bg-[#3B82F6] px-5 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {sending ? '正在回复…' : '发送'}
+            </button>
           </div>
-        )}
+        </div>
 
         <div className="mx-auto flex max-w-2xl flex-col items-center gap-2">
           <button
             type="button"
             onClick={toggleListening}
-            disabled={!chatReady}
-            aria-label="语音输入"
+            disabled={!chatReady || sending || voiceStatus === 'stopping'}
+            aria-label={listening ? '停止语音输入并保留文字' : '开始语音输入'}
+            aria-pressed={listening}
             className={`flex h-16 w-16 items-center justify-center rounded-full shadow-lg transition-all duration-300 ${
               listening
                 ? 'scale-105 bg-red-100 text-red-500'
@@ -286,7 +279,7 @@ function AIChat() {
             </svg>
           </button>
           <span className={`text-xs ${listening ? 'text-red-500' : 'text-gray-400'}`}>
-            {listening ? '点击停止' : chatReady ? '点击说话' : '正在连接 AI…'}
+            {listening ? '停止并保留文字' : sending ? '正在回复…' : chatReady ? '点击说话' : '正在连接 AI…'}
           </span>
         </div>
 

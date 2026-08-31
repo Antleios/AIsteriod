@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react'
 import aiLogo from '../assets/logo.jpg'
+import { useSpeechBusy, useSpeechText } from '../hooks/useGentleSpeech.js'
 
-function AIAvatar({ message, speaking }) {
+function AIAvatar({ message: fallbackMessage }) {
+  const spokenText = useSpeechText()
+  const speaking = useSpeechBusy()
+  const message = spokenText || fallbackMessage
   const [dotCount, setDotCount] = useState(0)
 
   useEffect(() => {

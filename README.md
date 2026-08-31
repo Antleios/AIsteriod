@@ -104,18 +104,10 @@ npm run dev
 
 前端开发服务器已代理 `/api` 到 `http://localhost:3001`。后端不可用时，三个游戏会继续回退到 `src/data/*.js` 本地题库。
 
-## AI 接入指南（如何接真实 AI）
+## AI 接入与语音
 
-对话功能已留好**接入缝隙**，接真实 LLM 只需改一处，页面无需改动：
+普通对话与游戏自由提问已接入会话 API，默认使用百炼 Qwen Plus；所有页面播报统一支持 Qwen3-TTS-Instruct-Flash 温柔语音。详见 [AI_SETUP.md](server/AI_SETUP.md) 的 API 选型、费用、环境变量与验证说明。
 
-1. **前端**：页面只调用 `src/api/ai.js` 的 `requestAIMessage(messages)`，POST 到 `/api/ai/chat`（携带完整对话历史 `{messages:[{role,content}]}`）；后端不可用时**自动回退本地 mock**
-2. **后端**：`server/src/services/aiService.js` 的 `getAiReply()` 是唯一替换点——
-   - 安装 SDK（如 `npm i openai` / `@anthropic-ai/sdk` / deepseek）、在 `server/.env` 配 API Key
-   - 用 provider 调用替换 mock 主体，把 `messages` 映射成对应消息格式，返回文本保持 `{reply}` 结构
-3. **流式（可选）**：把 `getAiReply` 改为接收 `res` 并返回 SSE（`text/event-stream` + `data: {"delta":...}` 分块），前端把 `requestAIMessage` 换成 fetch 流读取器逐块喂给语音
+在 server/.env 或后端部署平台配置 QWEN_API_KEY 后重启。不要将密钥放入前端或 Git。游戏规则判分与自由提问分开处理，缺少密钥时会明确提示。
 
-## 备注
-
-- 当前阶段不实现登录，默认视为已登录
-- 语音数据与完成记录预留同步医生端接口
-- 游戏进度使用 localStorage 持久化
+当前已实现患者/医生登录、训练数据落库、医患关联权限与医生端记录查看；上文早期页面说明以当前代码和 AI_SETUP.md 为准。

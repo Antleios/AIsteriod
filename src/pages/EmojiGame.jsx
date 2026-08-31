@@ -1,3 +1,8 @@
+import GameVoiceInput from '../components/GameVoiceInput.jsx'
+import SpeechControls from '../components/SpeechControls.jsx'
+import GameConversation from '../components/GameConversation.jsx'
+import { useSpeechBusy } from '../hooks/useGentleSpeech.js'
+import { useGameSpeech } from '../hooks/useGameSpeech.js'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ProgressBar from '../components/ProgressBar.jsx'
@@ -34,6 +39,9 @@ function EmojiGame() {
   const [rounds, setRounds] = useState([])
   const [roundIndex, setRoundIndex] = useState(0)
   const [score, setScore] = useState(0)
+  const [gameChatActive, setGameChatActive] = useState(false)
+  const [gameVoiceActive, setGameVoiceActive] = useState(false)
+  const gameConversationRef = useRef(null)
   const [todayCompleted, setTodayCompleted] = useState(0)
   const [step, setStep] = useState('prompting') // prompting | waiting | correct | wrong
   const [selectedId, setSelectedId] = useState(null)
@@ -50,7 +58,7 @@ function EmojiGame() {
 
   const current = rounds[roundIndex]
 
-  useTrainingIdleTracker(gameRunId)
+  useTrainingIdleTracker(gameRunId, { conversationRef: gameConversationRef, questionId: current?.questionId, paused: gameChatActive || !['waiting', 'wrong'].includes(step) || todayCompleted >= DAILY_GOAL })
 
   useEffect(() => {
     let cancelled = false
@@ -108,15 +116,8 @@ function EmojiGame() {
     [current],
   )
 
-  const speak = useCallback((text) => {
-    if (!window.speechSynthesis) return
-    window.speechSynthesis.cancel()
-    const utter = new SpeechSynthesisUtterance(text)
-    utter.lang = 'zh-CN'
-    utter.rate = 0.9
-    utter.pitch = 1.1
-    window.speechSynthesis.speak(utter)
-  }, [])
+  const speak = useGameSpeech(gameConversationRef)
+  const speechBusy = useSpeechBusy()
 
   // Initialize each round
   useEffect(() => {
@@ -141,7 +142,8 @@ function EmojiGame() {
 
   const handleSelect = useCallback(
     async (opt, index) => {
-      if (step !== 'waiting') return
+      if (step !== 'waiting' || gameChatActive || gameVoiceActive) return
+      gameConversationRef.current?.record('user', `选择了 ${opt.emoji}（${opt.name}）`)
       setSelectedId(index)
 
       setStep('submitting')
@@ -189,7 +191,7 @@ function EmojiGame() {
         speak(message.speech)
       }
     },
-    [step, current, speak],
+    [step, current, speak, gameChatActive, gameVoiceActive],
   )
 
   const goNext = useCallback(() => {
@@ -202,11 +204,11 @@ function EmojiGame() {
   }, [questionBank, roundIndex, rounds.length])
 
   useEffect(() => {
-    if (step === 'correct') {
+    if (step === 'correct' && !speechBusy && !gameChatActive && !gameVoiceActive && todayCompleted < DAILY_GOAL) {
       const timer = setTimeout(goNext, 2500)
       return () => clearTimeout(timer)
     }
-  }, [step, goNext])
+  }, [step, goNext, speechBusy, todayCompleted, gameChatActive, gameVoiceActive])
 
   const isAllDone = todayCompleted >= DAILY_GOAL
 
@@ -248,6 +250,7 @@ function EmojiGame() {
         </div>
       </div>
 
+      <SpeechControls />
       {/* Progress Bar */}
       <div className="mx-6 mb-4">
         <ProgressBar current={todayCompleted} total={DAILY_GOAL} />
@@ -292,7 +295,7 @@ function EmojiGame() {
                   <button
                     key={i}
                     onClick={() => handleSelect(opt, i)}
-                    disabled={step !== 'waiting'}
+                    disabled={step !== 'waiting' || gameChatActive || gameVoiceActive}
                     className={`group flex flex-col items-center gap-3 rounded-3xl p-7 shadow-lg backdrop-blur-sm transition-all duration-300 ${
                       step !== 'waiting'
                         ? isCorrectReveal
@@ -353,6 +356,8 @@ function EmojiGame() {
             )}
           </>
         )}
+        {!isAllDone && <GameVoiceInput onActivity={setGameVoiceActive} disabled={gameChatActive} onSend={(text, method = 'ASR') => gameConversationRef.current?.ask(text, method)} />}
+        <GameConversation ref={gameConversationRef} onActivity={setGameChatActive} questionId={current.questionId} gameRunId={gameRunId} context="EMOJI_MATCH" />
       </main>
 
       {/* AI Avatar floating */}

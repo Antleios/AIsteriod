@@ -1,3 +1,6 @@
+import { emotionEmojis } from './emotionEmojis.js'
+import { colorPalette } from './colorItems.js'
+
 const lastVariantIndexes = new Map()
 
 const messageBuilders = {
@@ -29,11 +32,11 @@ const messageBuilders = {
     correct: [
       ({ answer }) => ({
         display: answer
-          ? `答对了！这就是${answer}！太棒了！🎉`
-          : '答对了！太棒了！🎉',
+          ? `答对了！这就是${answer}！嗯，做到了。🎉`
+          : '答对了！嗯，做到了。🎉',
         speech: answer
-          ? `答对了！这就是${answer}！太棒了！`
-          : '答对了！太棒了！',
+          ? `答对了！这就是${answer}！嗯，做到了。`
+          : '答对了！嗯，做到了。',
       }),
       ({ answer }) => ({
         display: answer
@@ -74,8 +77,8 @@ const messageBuilders = {
         speech: '没关系，我们再观察一下图片吧。',
       }),
       () => ({
-        display: '已经很接近了，再想一想它叫什么吧。💡',
-        speech: '已经很接近了，再想一想它叫什么吧。',
+        display: '没关系，我们看看提示，再想一想它叫什么。💡',
+        speech: '没关系，我们看看提示，再想一想它叫什么。',
       }),
       () => ({
         display: '先别着急，看看提示，再试一次吧。🙂',
@@ -108,7 +111,7 @@ const messageBuilders = {
     ],
     completion: [
       ({ goal }) => ({
-        display: '太棒了！今日训练全部完成！',
+        display: '嗯，做到了。今日训练全部完成！',
         detail: `今天认识了 ${goal} 个物品，继续加油！`,
       }),
       ({ goal }) => ({
@@ -116,7 +119,7 @@ const messageBuilders = {
         detail: `你认真练习了 ${goal} 个物品，表现很棒！`,
       }),
       ({ goal }) => ({
-        display: '任务完成，今天进步不少！',
+        display: '今天的练习完成了，可以休息一下。',
         detail: `${goal} 个物品训练已经完成，明天继续保持！`,
       }),
     ],
@@ -148,8 +151,8 @@ const messageBuilders = {
     ],
     correct: [
       ({ emoji, target }) => ({
-        display: `答对了！${emoji} 就是${target}！太棒了！🎉`,
-        speech: `答对了！这就是${target}！太棒了！`,
+        display: `答对了！${emoji} 就是${target}！嗯，做到了。🎉`,
+        speech: `答对了！这就是${target}！嗯，做到了。`,
       }),
       ({ emoji, target }) => ({
         display: `选得真准！${emoji} 表示${target}！⭐`,
@@ -189,7 +192,7 @@ const messageBuilders = {
     ],
     completion: [
       ({ goal }) => ({
-        display: '太棒了！今日表情训练全部完成！',
+        display: '嗯，做到了。今日表情训练全部完成！',
         detail: `今天认识了 ${goal} 种情绪表情，继续加油！`,
       }),
       ({ goal }) => ({
@@ -197,7 +200,7 @@ const messageBuilders = {
         detail: `你练习了 ${goal} 种情绪，观察得很认真！`,
       }),
       ({ goal }) => ({
-        display: '任务完成，你越来越会辨认情绪了！',
+        display: '今天的表情练习完成了，可以休息一下。',
         detail: `${goal} 道表情题已经完成，表现很不错！`,
       }),
     ],
@@ -240,7 +243,7 @@ const messageBuilders = {
     ],
     correct: [
       ({ label }) => ({
-        display: `太棒了！${label}配对成功！🎉`,
+        display: `嗯，做到了。${label}配对成功！🎉`,
         speech: `${label}配对成功！`,
       }),
       ({ label }) => ({
@@ -339,3 +342,22 @@ function pickGameMessage(game, scene, context = {}) {
 }
 
 export { pickGameMessage }
+
+// Only these context-free, developer-authored phrases may enter the shared audio cache.
+export const fixedSpeechTexts = new Set([
+  ...messageBuilders.objectNaming.prompt,
+  ...messageBuilders.objectNaming.incorrect,
+  ...messageBuilders.colorLine.prompt,
+  ...messageBuilders.colorLine.incorrect,
+].map(build => build({}).speech).filter(Boolean))
+for (const emotion of emotionEmojis) {
+  for (const build of [...messageBuilders.emojiMatch.prompt, ...messageBuilders.emojiMatch.correct]) {
+    fixedSpeechTexts.add(build({ target: emotion.name, emoji: emotion.emoji }).speech)
+  }
+  for (const option of emotionEmojis) {
+    for (const build of messageBuilders.emojiMatch.incorrect) fixedSpeechTexts.add(build({ target: emotion.name, optionName: option.name, emoji: option.emoji }).speech)
+  }
+}
+for (const color of colorPalette) {
+  for (const build of [...messageBuilders.colorLine.selected, ...messageBuilders.colorLine.correct]) fixedSpeechTexts.add(build({ label: color.name }).speech)
+}
